@@ -31,6 +31,8 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <time.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -59,13 +61,21 @@
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 32
 
+
 int
 main(int argc, char **argv)
 {
 	int ret;
 	unsigned lcore_id;
     struct rte_mempool *mbuf_pool;
+    srand(time(NULL));
 
+    // Using chars because guarenteed to be 1 byte but int can be 16 or 32 (arch)
+    char *data; 
+    // Allocate 1024*1024-> 1mb * 50 which is larger than cache size
+    int bytes = (1024*1024*500);
+
+    data = (char *) malloc(bytes);
 
 	ret = rte_eal_init(argc, argv);
 	if (ret < 0)
@@ -73,16 +83,25 @@ main(int argc, char **argv)
 
  /* Creates a new mempool in memory to hold the mbufs. */
     mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", NUM_MBUFS,
-                MBUF_CACHE_SIZE, 0, 2048, rte_socket_id());
+                MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
        struct rte_mbuf *bufs[BURST_SIZE];
 
     int i;
     uint64_t start = rte_get_tsc_cycles();
-
+    int r_int; 
 
     for(i=0; i < 10000000; i++) {
     rte_pktmbuf_alloc_bulk(mbuf_pool, bufs, BURST_SIZE);
-    //***************Do stuff *********************
+    r_int = rand() % 400000000;
+    //data[r_int] = 'c';
+    r_int = rand() % 400000000;
+    //data[r_int] = 'c';
+    r_int = rand() % 400000000;
+    //data[r_int] = 'c';
+    r_int = rand() % 400000000;
+    //data[r_int] = 'c';
+    //r_int = rand() % 400000000;
+    //data[r_int] = 'c';
     rte_pktmbuf_free(*bufs);
     }
     uint64_t end = rte_get_tsc_cycles();

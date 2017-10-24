@@ -58,18 +58,6 @@
 #define NUM_MBUFS 8191
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 32
-#if 0
-static int
-lcore_hello(__attribute__((unused)) void *arg)
-{
-	unsigned lcore_id;
-	lcore_id = rte_lcore_id();
-
-
-	printf("hello from core %u\n", lcore_id);
-	return 0;
-}
-#endif
 
 int
 main(int argc, char **argv)
@@ -100,18 +88,5 @@ main(int argc, char **argv)
     uint64_t end = rte_get_tsc_cycles();
     printf("lcore %d:Set Cost %" PRIu64 " cycles, and in %lf sec\n", 0, end-start, ((double)(end-start))/rte_get_tsc_hz());
 
-
-
-
-
-	/* call lcore_hello() on every slave lcore */
-	//RTE_LCORE_FOREACH_SLAVE(lcore_id) {
-//		rte_eal_remote_launch(lcore_hello, NULL, lcore_id);
-//	}
-
-	/* call it on master lcore too */
-	//lcore_hello(NULL);
-
-	//rte_eal_mp_wait_lcore();
 	return 0;
 }

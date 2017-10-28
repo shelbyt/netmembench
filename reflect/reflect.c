@@ -44,8 +44,8 @@
 #define RX_RING_SIZE 256
 #define TX_RING_SIZE 512
 
-#define NUM_MBUFS 65534
-#define MBUF_CACHE_SIZE 250
+#define NUM_MBUFS (256*1024)//65534// 
+#define MBUF_CACHE_SIZE 256
 #define BURST_SIZE 32
 
 #define QUEUE_PER_CORE 5
@@ -53,9 +53,9 @@
 
 #if 0
 static const struct rte_eth_conf port_conf_default = {
-	.rxmode = { 
-         .max_rx_pkt_len = ETHER_MAX_LEN 
-     }
+    .rxmode = { 
+        .max_rx_pkt_len = ETHER_MAX_LEN 
+    }
 };
 #endif
 
@@ -95,215 +95,130 @@ struct slave_args {
  * Initializes a given port using global settings and with the RX buffers
  * coming from the mbuf_pool passed as a parameter.
  */
-static inline int
+    static inline int
 port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 {
-	struct rte_eth_conf port_conf = port_conf_default;
+    struct rte_eth_conf port_conf = port_conf_default;
 #if 0
-	const uint16_t rx_rings = 1, tx_rings = 1;
+    const uint16_t rx_rings = 1, tx_rings = 1;
 #endif
 
-	const uint16_t rx_rings = rte_lcore_count(), tx_rings = rte_lcore_count();
-	int retval;
-	uint16_t q;
+    const uint16_t rx_rings = rte_lcore_count(), tx_rings = rte_lcore_count();
+    int retval;
+    uint16_t q;
     uint16_t lcore_id;
 
-	if (port >= rte_eth_dev_count())
-		return -1;
+    if (port >= rte_eth_dev_count())
+        return -1;
 
     printf("config start\n");
-	/* Configure the Ethernet device. */
-	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
-	if (retval != 0)
-		return retval;
+    /* Configure the Ethernet device. */
+    retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
+    if (retval != 0)
+        return retval;
     printf("config end\n");
 
-#if 0
-/*SHELBY-> SETUP One rx-tx queue per LCORE*/
-
-	/* Allocate and set up 1 RX queue per lcore. */
-    for (lcore_id=0; lcore_id < RTE_MAX_LCORE; lcore_id++){
-		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE,
-				rte_eth_dev_socket_id(port), NULL, mbuf_pool);
-		if (retval < 0)
-			return retval;
-        
-    }
-	for (q = 0; q < rx_rings; q++) {
-        printf("this is run\n");
-		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE,
-				rte_eth_dev_socket_id(port), NULL, mbuf_pool);
-		if (retval < 0)
-			return retval;
-	}
-#endif
-
 #if 1
-	/* Allocate and set up 1 RX queue per Ethernet port(NOPE: Now is 1queue per
+    /* Allocate and set up 1 RX queue per Ethernet port(NOPE: Now is 1queue per
      * lcore). */
-	for (q = 0; q < rx_rings; q++) {
+    for (q = 0; q < rx_rings; q++) {
         printf("rx queue [%d]\n", q);
-		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE,
-				rte_eth_dev_socket_id(port), NULL, mbuf_pool);
-		if (retval < 0)
-			return retval;
-	}
+        retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE,
+                rte_eth_dev_socket_id(port), NULL, mbuf_pool);
+        if (retval < 0)
+            return retval;
+    }
 
-	/* Allocate and set up 1 TX queue per Ethernet port. */
-	for (q = 0; q < tx_rings; q++) {
-		retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE,
-				rte_eth_dev_socket_id(port), NULL);
-		if (retval < 0)
-			return retval;
-	}
+    /* Allocate and set up 1 TX queue per Ethernet port. */
+    for (q = 0; q < tx_rings; q++) {
+        retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE,
+                rte_eth_dev_socket_id(port), NULL);
+        if (retval < 0)
+            return retval;
+    }
 #endif
 
-	/* Start the Ethernet port. */
-	retval = rte_eth_dev_start(port);
-	if (retval < 0)
-		return retval;
+    /* Start the Ethernet port. */
+    retval = rte_eth_dev_start(port);
+    if (retval < 0)
+        return retval;
 
-	/* Display the port MAC address. */
-	struct ether_addr addr;
-	rte_eth_macaddr_get(port, &addr);
-	printf("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
-			(unsigned)port,
-			addr.addr_bytes[0], addr.addr_bytes[1],
-			addr.addr_bytes[2], addr.addr_bytes[3],
-			addr.addr_bytes[4], addr.addr_bytes[5]);
+    /* Display the port MAC address. */
+    struct ether_addr addr;
+    rte_eth_macaddr_get(port, &addr);
+    printf("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+            " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
+            (unsigned)port,
+            addr.addr_bytes[0], addr.addr_bytes[1],
+            addr.addr_bytes[2], addr.addr_bytes[3],
+            addr.addr_bytes[4], addr.addr_bytes[5]);
 
-	/* Enable RX in promiscuous mode for the Ethernet device. */
-	rte_eth_promiscuous_enable(port);
+    /* Enable RX in promiscuous mode for the Ethernet device. */
+    rte_eth_promiscuous_enable(port);
 
-	return 0;
+    return 0;
 }
 
-static __attribute__((noreturn)) void lcore_main(void)
-{
-    while(1) {}
-#if 0
-	const uint8_t nb_ports = rte_eth_dev_count();
-	uint8_t port;
-    printf("**NB_PORTS is %d\n*", rte_eth_dev_count());
 
-	/*
-	 * Check that the port is on the same NUMA node as the polling thread
-	 * for best performance.
-	 */
-	for (port = 0; port < nb_ports; port++)
-		if (rte_eth_dev_socket_id(port) > 0 &&
-				rte_eth_dev_socket_id(port) !=
-						(int)rte_socket_id())
-			printf("WARNING, port %u is on remote NUMA node to "
-					"polling thread.\n\tPerformance will "
-					"not be optimal.\n", port);
-
-	printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
-			rte_lcore_id());
-
-	/* Run until the application is quit or killed. */
-	for (;;) {
-
-	//printf("looping\n");
-		/*
-		 * Receive packets on a port and forward them on the paired
-		 * port. The mapping is 0 -> 1, 1 -> 0, 2 -> 3, 3 -> 2, etc.
-		 */
-		//for (port = 0; port < nb_ports; port++) {
-
-			/* Get burst of RX packets, from first port of pair. */
-			struct rte_mbuf *bufs[BURST_SIZE];
-	//printf("rx start\n");
-			const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, 0,
-					bufs, BURST_SIZE);
-            printf("rx return is %d core [%d]\n", nb_rx, rte_lcore_id());
-
-	//printf("rx end\n");
-
-			if (unlikely(nb_rx == 0))
-				continue;
-
-			/* Send burst of TX packets, to second port of pair. */
-			const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
-					bufs, nb_rx);
-
-			/* Free any unsent packets. */
-			if (unlikely(nb_tx < nb_rx)) {
-				uint16_t buf;
-				for (buf = nb_tx; buf < nb_rx; buf++)
-					rte_pktmbuf_free(bufs[buf]);
-			}
-		//}
-	}
-#endif
-}
-
-static __attribute__((unused)) int
-        slave_bmain(__attribute__((unused)) void *arg)
+    static __attribute__((unused)) int
+slave_bmain(__attribute__((unused)) void *arg)
 {
 
     printf("**********************");
-//static __attribute__((noreturn)) void lcore_main(void)
-//{
-	const uint8_t nb_ports = rte_eth_dev_count();
-	uint8_t port;
+    //static __attribute__((noreturn)) void lcore_main(void)
+    //{
+    const uint8_t nb_ports = rte_eth_dev_count();
+    uint8_t port;
     struct slave_args *s_args = (struct slave_args*)arg;
     printf("Slave: Core [%d], Queue[%d]\n",rte_lcore_id(), s_args->curr_queue_id);
-    
-    
+
+
     printf("**NB_PORTS is %d\n*", rte_eth_dev_count());
 
-	/*
-	 * Check that the port is on the same NUMA node as the polling thread
-	 * for best performance.
-	 */
-	for (port = 0; port < nb_ports; port++)
-		if (rte_eth_dev_socket_id(port) > 0 &&
-				rte_eth_dev_socket_id(port) !=
-						(int)rte_socket_id())
-			printf("WARNING, port %u is on remote NUMA node to "
-					"polling thread.\n\tPerformance will "
-					"not be optimal.\n", port);
+    /*
+     * Check that the port is on the same NUMA node as the polling thread
+     * for best performance.
+     */
+    for (port = 0; port < nb_ports; port++)
+        if (rte_eth_dev_socket_id(port) > 0 &&
+                rte_eth_dev_socket_id(port) !=
+                (int)rte_socket_id())
+            printf("WARNING, port %u is on remote NUMA node to "
+                    "polling thread.\n\tPerformance will "
+                    "not be optimal.\n", port);
 
-	printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
-			rte_lcore_id());
+    printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
+            rte_lcore_id());
 
-	/* Run until the application is quit or killed. */
-	for (;;) {
+    /* Run until the application is quit or killed. */
+    for (;;) {
 
-	//printf("looping\n");
-		/*
-		 * Receive packets on a port and forward them on the paired
-		 * port. The mapping is 0 -> 1, 1 -> 0, 2 -> 3, 3 -> 2, etc.
-		 */
-		//for (port = 0; port < nb_ports; port++) {
 
-			/* Get burst of RX packets, from first port of pair. */
-			struct rte_mbuf *bufs[BURST_SIZE];
-			const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, s_args->curr_queue_id,
-					bufs, BURST_SIZE);
-            //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
+        /* Get burst of RX packets, from first port of pair. */
+        struct rte_mbuf *bufs[BURST_SIZE];
+        const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, s_args->curr_queue_id,
+                bufs, BURST_SIZE);
+        //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
 
 
 #if 1
-			if (unlikely(nb_rx == 0))
-				continue;
+        if (unlikely(nb_rx == 0))
+            continue;
 #endif
 
-			/* Send burst of TX packets, to second port of pair. */
-			const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, s_args->curr_queue_id,
-					bufs, nb_rx);
+        /* Send burst of TX packets, to second port of pair. */
+        const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, s_args->curr_queue_id,
+                bufs, nb_rx);
 
-			/* Free any unsent packets. */
-			if (unlikely(nb_tx < nb_rx)) {
-				uint16_t buf;
-				for (buf = nb_tx; buf < nb_rx; buf++)
-					rte_pktmbuf_free(bufs[buf]);
-			}
-		//}
-	}
-    //return 0;
+        /* Free any unsent packets. */
+        if (unlikely(nb_tx < nb_rx)) {
+            uint16_t buf;
+            for (buf = nb_tx; buf < nb_rx; buf++)
+                rte_pktmbuf_free(bufs[buf]);
+        }
+        //}
+}
+//return 0;
 }
 
 /*
@@ -312,66 +227,55 @@ static __attribute__((unused)) int
  */
 //static int slave_main(__attribute__((unused)) void *ptr_data)
 //{
-static __attribute__((unused)) int
-        slave_main(__attribute__((unused)) void *arg)
+    static __attribute__((unused)) int
+slave_main(__attribute__((unused)) void *arg)
 {
 
     printf("**********************");
-//static __attribute__((noreturn)) void lcore_main(void)
-//{
-	const uint8_t nb_ports = rte_eth_dev_count();
-	uint8_t port;
+    const uint8_t nb_ports = rte_eth_dev_count();
+    uint8_t port;
     printf("**NB_PORTS is %d\n*", rte_eth_dev_count());
 
-	/*
-	 * Check that the port is on the same NUMA node as the polling thread
-	 * for best performance.
-	 */
-	for (port = 0; port < nb_ports; port++)
-		if (rte_eth_dev_socket_id(port) > 0 &&
-				rte_eth_dev_socket_id(port) !=
-						(int)rte_socket_id())
-			printf("WARNING, port %u is on remote NUMA node to "
-					"polling thread.\n\tPerformance will "
-					"not be optimal.\n", port);
+    /*
+     * Check that the port is on the same NUMA node as the polling thread
+     * for best performance.
+     */
+    for (port = 0; port < nb_ports; port++)
+        if (rte_eth_dev_socket_id(port) > 0 &&
+                rte_eth_dev_socket_id(port) !=
+                (int)rte_socket_id())
+            printf("WARNING, port %u is on remote NUMA node to "
+                    "polling thread.\n\tPerformance will "
+                    "not be optimal.\n", port);
 
-	printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
-			rte_lcore_id());
+    printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
+            rte_lcore_id());
 
-	/* Run until the application is quit or killed. */
-	for (;;) {
-
-	//printf("looping\n");
-		/*
-		 * Receive packets on a port and forward them on the paired
-		 * port. The mapping is 0 -> 1, 1 -> 0, 2 -> 3, 3 -> 2, etc.
-		 */
-		//for (port = 0; port < nb_ports; port++) {
-
-			/* Get burst of RX packets, from first port of pair. */
-			struct rte_mbuf *bufs[BURST_SIZE];
-			const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, rte_lcore_id(),
-					bufs, BURST_SIZE);
-            printf("rx return is %d core [%d]\n", nb_rx, rte_lcore_id());
+    /* Run until the application is quit or killed. */
+    for (;;) {
 
 
-#if 1
-			if (unlikely(nb_rx == 0))
-				continue;
-#endif
+        /* Get burst of RX packets, from first port of pair. */
+        struct rte_mbuf *bufs[BURST_SIZE];
+        const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, rte_lcore_id(),
+                bufs, BURST_SIZE);
+        printf("rx return is %d core [%d]\n", nb_rx, rte_lcore_id());
 
-			/* Send burst of TX packets, to second port of pair. */
-			const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, rte_lcore_id(),
-					bufs, nb_rx);
 
-			/* Free any unsent packets. */
-			if (unlikely(nb_tx < nb_rx)) {
-				uint16_t buf;
-				for (buf = nb_tx; buf < nb_rx; buf++)
-					rte_pktmbuf_free(bufs[buf]);
-			}
-		//}
-	}
+        if (unlikely(nb_rx == 0))
+            continue;
+
+        /* Send burst of TX packets, to second port of pair. */
+        const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, rte_lcore_id(),
+                bufs, nb_rx);
+
+        /* Free any unsent packets. */
+        if (unlikely(nb_tx < nb_rx)) {
+            uint16_t buf;
+            for (buf = nb_tx; buf < nb_rx; buf++)
+                rte_pktmbuf_free(bufs[buf]);
+        }
+    }
     //return 0;
 }
 
@@ -379,93 +283,80 @@ static __attribute__((unused)) int
  * The main function, which does initialization and calls the per-lcore
  * functions.
  */
-int
+    int
 main(int argc, char *argv[])
 {
-	struct rte_mempool *mbuf_pool;
+    struct rte_mempool *mbuf_pool;
     struct slave_args slave_args;
-	unsigned nb_ports;
-	uint8_t portid;
+    unsigned nb_ports;
+    uint8_t portid;
     uint32_t id_core;
     struct rte_eth_dev_info dev_info;
 
     int j = 0;
 
-	/* Initialize the Environment Abstraction Layer (EAL). */
-	int ret = rte_eal_init(argc, argv);
+    /* Initialize the Environment Abstraction Layer (EAL). */
+    int ret = rte_eal_init(argc, argv);
     printf("(***ret is %d\n", ret);
-	if (ret < 0)
-		rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+    if (ret < 0)
+        rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
 
-	argc -= ret;
-	argv += ret;
+    argc -= ret;
+    argv += ret;
 
-	/* Check that there is an even number of ports to send/receive on. */
-	nb_ports = rte_eth_dev_count();
+    /* Check that there is an even number of ports to send/receive on. */
+    nb_ports = rte_eth_dev_count();
 
-	printf("\nPorts are  %d\n", rte_eth_dev_count());
+    printf("\nPorts are  %d\n", rte_eth_dev_count());
 #if 0
-	if (nb_ports < 2 || (nb_ports & 1))
-		rte_exit(EXIT_FAILURE, "Error: number of ports must be even\n");
+    if (nb_ports < 2 || (nb_ports & 1))
+        rte_exit(EXIT_FAILURE, "Error: number of ports must be even\n");
 #endif
 
-	/* Creates a new mempool in memory to hold the mbufs. */
-	mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", NUM_MBUFS * nb_ports,
-		MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+    /* Creates a new mempool in memory to hold the mbufs. */
+    mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", NUM_MBUFS * nb_ports,
+            MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 
-	if (mbuf_pool == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
+    if (mbuf_pool == NULL)
+        rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
 
-	/* Initialize all ports. */
-	for (portid = 0; portid < nb_ports; portid++)
-		if (port_init(portid, mbuf_pool) != 0)
-			rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n",
-					portid);
-/* Assume there is an available slave.. */
-
-     //id_core = rte_lcore_id();
-     //printf("id_Core ->  %d \n", id_core);
+    /* Initialize all ports. */
+    for (portid = 0; portid < nb_ports; portid++)
+        if (port_init(portid, mbuf_pool) != 0)
+            rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n",
+                    portid);
 #if 0
 
-     id_core = rte_get_next_lcore(id_core, 1, 1);
-     printf("id_Core ->  %d \n", id_core);
+    id_core = rte_get_next_lcore(id_core, 1, 1);
+    printf("id_Core ->  %d \n", id_core);
 
-     printf("Using %d lcores\n", rte_lcore_count());
-     
+    printf("Using %d lcores\n", rte_lcore_count());
+
 
 #endif
 
-     slave_args.curr_queue_id = 0;
+    slave_args.curr_queue_id = 0;
 
 #if 1
     RTE_LCORE_FOREACH_SLAVE(id_core) {
 #if 1
-   // for(j = 0; j < 5; j++)//Usually this is TOTAL_QUEUES
-   // {
-     slave_args.curr_queue_id = j;
-     printf("LAUNCHING <<%d>> QUEUE <<%d>> \n", id_core,j);
-     rte_eal_remote_launch(slave_bmain, &slave_args, id_core);
-     j++;
-   // }
+        // for(j = 0; j < 5; j++)//Usually this is TOTAL_QUEUES
+        // {
+        slave_args.curr_queue_id = j;
+        printf("LAUNCHING <<%d>> QUEUE <<%d>> \n", id_core,j);
+        rte_eal_remote_launch(slave_bmain, &slave_args, id_core);
+        j++;
+        // }
 #endif
     }
 #endif
-	//lcore_main();
-    
-    //rte_eal_remote_launch(slave_main, NULL,1 );
-    //
     slave_args.curr_queue_id = j;
     printf("LAUNCHING <<0>> QUEUE <<%d>> \n", j);
     slave_bmain(&slave_args);
     //rte_eal_remote_launch(slave_main, NULL, 1);
 
     rte_eal_mp_wait_lcore();
-    //rte_eal_remote_launch(slave_main, NULL, id_core);
+    //lcore_main();
 
-		//printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
-
-	/* Call lcore_main on the master core only. */
-	//lcore_main();
-
-	return 0;
+    return 0;
 }

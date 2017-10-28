@@ -182,6 +182,7 @@ slave_bmain(__attribute__((unused)) void *arg)
     uint8_t port;
     struct slave_args *s_args = (struct slave_args*)arg;
     int queue_id = map_lcore_to_queue[rte_lcore_id()];
+    int tx_queue_id = 0;
     printf("Slave: Core [%d], Queue[%d]\n",rte_lcore_id(), queue_id );
 
 
@@ -210,14 +211,14 @@ slave_bmain(__attribute__((unused)) void *arg)
         struct rte_mbuf *bufs[BURST_SIZE];
         const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
                 bufs, BURST_SIZE);
-        printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
+        //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
 
 
         if (unlikely(nb_rx == 0))
             continue;
 
         /* Send burst of TX packets, to second port of pair. */
-        const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, queue_id,
+        const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, tx_queue_id,
                 bufs, nb_rx);
 
         /* Free any unsent packets. */

@@ -78,6 +78,21 @@ static struct rte_eth_conf port_conf_default = {
 };
 #endif
 
+/*Total Usable lcores*/
+uint32_t total_num_lcores()
+{
+    uint32_t total = 0;
+    uint32_t i;
+    for (i = 0; i < RTE_MAX_LCORE; i++)
+    {
+        if ( rte_lcore_is_enabled(i) )
+        {
+            total += 1;
+        }
+    }
+    return total;
+}
+
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -91,7 +106,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     const uint16_t rx_rings = 1, tx_rings = 1;
 #endif
 
-    const uint16_t rx_rings = rte_lcore_count(), tx_rings = rte_lcore_count();
     int retval;
     uint16_t q;
     uint16_t lcore_id;
@@ -101,7 +115,7 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 
     printf("config start\n");
     /* Configure the Ethernet device. */
-    retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
+    retval = rte_eth_dev_configure(port,total_num_lcores() , 1, &port_conf);
     if (retval != 0)
         return retval;
 
@@ -196,7 +210,7 @@ slave_bmain(__attribute__((unused)) void *arg)
         struct rte_mbuf *bufs[BURST_SIZE];
         const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
                 bufs, BURST_SIZE);
-        //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
+        printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
 
 
         if (unlikely(nb_rx == 0))
@@ -266,7 +280,7 @@ int main(int argc, char *argv[])
     RTE_LCORE_FOREACH_SLAVE(id_core) {
         rte_eal_remote_launch(slave_bmain, NULL, id_core);
     }
-    slave_bmain(NULL);
+    //slave_bmain(NULL);
     //rte_eal_remote_launch(slave_main, NULL, 1);
 
     rte_eal_mp_wait_lcore();

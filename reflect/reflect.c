@@ -39,8 +39,6 @@
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
 
-
-
 #define RX_RING_SIZE 256
 #define TX_RING_SIZE 512
 
@@ -53,14 +51,6 @@
 
 //We will iterate over 12 cores to find which are active
 #define RTE_MAX_CORES 12 
-
-#if 0
-static const struct rte_eth_conf port_conf_default = {
-    .rxmode = { 
-        .max_rx_pkt_len = ETHER_MAX_LEN 
-    }
-};
-#endif
 
 #if 1
 uint32_t map_lcore_to_queue[RTE_MAX_CORES];
@@ -94,8 +84,6 @@ struct slave_args {
 
 
 
-/* basicfwd.c: Basic DPDK skeleton forwarding example. */
-
 /*
  * Initializes a given port using global settings and with the RX buffers
  * coming from the mbuf_pool passed as a parameter.
@@ -123,16 +111,17 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
         return retval;
 
     printf("Rx Ethernet port [%d]\n \
-            \t RX_RING_SIZE [%d] \
-            \t Socket_id [%d]",
+            \t RX_RING_SIZE [%d]\n \
+            \t Socket_id [%d]\n",
             port, RX_RING_SIZE, rte_eth_dev_socket_id(port));
 
     printf("config end\n");
 
     count = 0;
+    // TODO (shelbyt): Check retval
     for (q = 0; q < RTE_MAX_CORES; q++) {
-    printf(">>>>>>>>>Setup RX Core [%d]<<<<<<<<",q);
         if (rte_lcore_is_enabled(q)) {
+            printf(">>Setup RX Core [%d]<<\n",q);
             map_lcore_to_queue[q] = count;
             count++;
             retval = rte_eth_rx_queue_setup(
@@ -145,36 +134,14 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
         }
     }
 
-    printf(">>>>>>>>>Setup TX Core<<<<<<<<");
+    printf(">>Setup TX Core<<\n");
+    // TODO (shelbyt): Check retval
     retval = rte_eth_tx_queue_setup(
             port, //ethernet port
             0,//queue id
             TX_RING_SIZE,
             rte_eth_dev_socket_id(port),
             NULL);
-
-
-
-
-#if 0
-    /* Allocate and set up 1 RX queue per Ethernet port(NOPE: Now is 1queue per
-     * lcore). */
-    for (q = 0; q < rx_rings; q++) {
-        printf("rx queue [%d]\n", q);
-        retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE,
-                rte_eth_dev_socket_id(port), NULL, mbuf_pool);
-        if (retval < 0)
-            return retval;
-    }
-
-    /* Allocate and set up 1 TX queue per Ethernet port. */
-    for (q = 0; q < tx_rings; q++) {
-        retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE,
-                rte_eth_dev_socket_id(port), NULL);
-        if (retval < 0)
-            return retval;
-    }
-#endif
 
     /* Start the Ethernet port. */
     retval = rte_eth_dev_start(port);
@@ -202,9 +169,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 slave_bmain(__attribute__((unused)) void *arg)
 {
 
-    printf("**********************");
-    //static __attribute__((noreturn)) void lcore_main(void)
-    //{
     const uint8_t nb_ports = rte_eth_dev_count();
     uint8_t port;
     struct slave_args *s_args = (struct slave_args*)arg;
@@ -239,10 +203,8 @@ slave_bmain(__attribute__((unused)) void *arg)
         //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
 
 
-#if 1
         if (unlikely(nb_rx == 0))
             continue;
-#endif
 
         /* Send burst of TX packets, to second port of pair. */
         const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, s_args->curr_queue_id,
@@ -254,75 +216,14 @@ slave_bmain(__attribute__((unused)) void *arg)
             for (buf = nb_tx; buf < nb_rx; buf++)
                 rte_pktmbuf_free(bufs[buf]);
         }
-        //}
-}
-//return 0;
-}
-
-/*
- * The lcore main. This is the main thread that does the work, reading from
- * an input port and writing to an output port.
- */
-//static int slave_main(__attribute__((unused)) void *ptr_data)
-//{
-    static __attribute__((unused)) int
-slave_main(__attribute__((unused)) void *arg)
-{
-
-    printf("**********************");
-    const uint8_t nb_ports = rte_eth_dev_count();
-    uint8_t port;
-    printf("**NB_PORTS is %d\n*", rte_eth_dev_count());
-
-    /*
-     * Check that the port is on the same NUMA node as the polling thread
-     * for best performance.
-     */
-    for (port = 0; port < nb_ports; port++)
-        if (rte_eth_dev_socket_id(port) > 0 &&
-                rte_eth_dev_socket_id(port) !=
-                (int)rte_socket_id())
-            printf("WARNING, port %u is on remote NUMA node to "
-                    "polling thread.\n\tPerformance will "
-                    "not be optimal.\n", port);
-
-    printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
-            rte_lcore_id());
-
-    /* Run until the application is quit or killed. */
-    for (;;) {
-
-
-        /* Get burst of RX packets, from first port of pair. */
-        struct rte_mbuf *bufs[BURST_SIZE];
-        const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, rte_lcore_id(),
-                bufs, BURST_SIZE);
-        printf("rx return is %d core [%d]\n", nb_rx, rte_lcore_id());
-
-
-        if (unlikely(nb_rx == 0))
-            continue;
-
-        /* Send burst of TX packets, to second port of pair. */
-        const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, rte_lcore_id(),
-                bufs, nb_rx);
-
-        /* Free any unsent packets. */
-        if (unlikely(nb_tx < nb_rx)) {
-            uint16_t buf;
-            for (buf = nb_tx; buf < nb_rx; buf++)
-                rte_pktmbuf_free(bufs[buf]);
-        }
     }
-    //return 0;
 }
 
 /*
  * The main function, which does initialization and calls the per-lcore
  * functions.
  */
-    int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
     struct rte_mempool *mbuf_pool;
     struct slave_args slave_args;
@@ -335,7 +236,6 @@ main(int argc, char *argv[])
 
     /* Initialize the Environment Abstraction Layer (EAL). */
     int ret = rte_eal_init(argc, argv);
-    printf("(***ret is %d\n", ret);
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
 
@@ -346,10 +246,6 @@ main(int argc, char *argv[])
     nb_ports = rte_eth_dev_count();
 
     printf("\nPorts are  %d\n", rte_eth_dev_count());
-#if 0
-    if (nb_ports < 2 || (nb_ports & 1))
-        rte_exit(EXIT_FAILURE, "Error: number of ports must be even\n");
-#endif
 
     /* Creates a new mempool in memory to hold the mbufs. */
     mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", NUM_MBUFS * nb_ports,

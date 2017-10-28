@@ -78,11 +78,6 @@ static struct rte_eth_conf port_conf_default = {
 };
 #endif
 
-struct slave_args {
-    int curr_queue_id;
-};
-
-
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -130,7 +125,7 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
                     RX_RING_SIZE,
                     rte_eth_dev_socket_id(port), //socket id for pot 0
                     NULL, //TODO(shelbyt): No specific RX config but may help)
-                    mbuf_pool);
+                   mbuf_pool);
         }
     }
 
@@ -172,7 +167,8 @@ slave_bmain(__attribute__((unused)) void *arg)
     const uint8_t nb_ports = rte_eth_dev_count();
     uint8_t port;
     struct slave_args *s_args = (struct slave_args*)arg;
-    printf("Slave: Core [%d], Queue[%d]\n",rte_lcore_id(), s_args->curr_queue_id);
+    int queue_id = map_lcore_to_queue[rte_lcore_id()];
+    printf("Slave: Core [%d], Queue[%d]\n",rte_lcore_id(), queue_id );
 
 
     printf("**NB_PORTS is %d\n*", rte_eth_dev_count());
@@ -198,7 +194,7 @@ slave_bmain(__attribute__((unused)) void *arg)
 
         /* Get burst of RX packets, from first port of pair. */
         struct rte_mbuf *bufs[BURST_SIZE];
-        const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, s_args->curr_queue_id,
+        const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
                 bufs, BURST_SIZE);
         //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
 
@@ -207,7 +203,7 @@ slave_bmain(__attribute__((unused)) void *arg)
             continue;
 
         /* Send burst of TX packets, to second port of pair. */
-        const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, s_args->curr_queue_id,
+        const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, queue_id,
                 bufs, nb_rx);
 
         /* Free any unsent packets. */
@@ -226,13 +222,11 @@ slave_bmain(__attribute__((unused)) void *arg)
 int main(int argc, char *argv[])
 {
     struct rte_mempool *mbuf_pool;
-    struct slave_args slave_args;
     unsigned nb_ports;
     uint8_t portid;
     uint32_t id_core;
     struct rte_eth_dev_info dev_info;
 
-    int j = 0;
 
     /* Initialize the Environment Abstraction Layer (EAL). */
     int ret = rte_eal_init(argc, argv);
@@ -269,24 +263,10 @@ int main(int argc, char *argv[])
 
 #endif
 
-    slave_args.curr_queue_id = 0;
-
-#if 1
     RTE_LCORE_FOREACH_SLAVE(id_core) {
-#if 1
-        // for(j = 0; j < 5; j++)//Usually this is TOTAL_QUEUES
-        // {
-        slave_args.curr_queue_id = j;
-        printf("LAUNCHING <<%d>> QUEUE <<%d>> \n", id_core,j);
-        rte_eal_remote_launch(slave_bmain, &slave_args, id_core);
-        j++;
-        // }
-#endif
+        rte_eal_remote_launch(slave_bmain, NULL, id_core);
     }
-#endif
-    slave_args.curr_queue_id = j;
-    printf("LAUNCHING <<0>> QUEUE <<%d>> \n", j);
-    slave_bmain(&slave_args);
+    slave_bmain(NULL);
     //rte_eal_remote_launch(slave_main, NULL, 1);
 
     rte_eal_mp_wait_lcore();

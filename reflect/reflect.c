@@ -51,6 +51,9 @@
 #define QUEUE_PER_CORE 5
 #define TOTAL_QUEUES QUEUE_PER_CORE * rte_lcore_count()
 
+//We will iterate over 12 cores to find which are active
+#define RTE_MAX_CORES 12 
+
 #if 0
 static const struct rte_eth_conf port_conf_default = {
     .rxmode = { 
@@ -60,6 +63,8 @@ static const struct rte_eth_conf port_conf_default = {
 #endif
 
 #if 1
+uint32_t map_lcore_to_queue[RTE_MAX_CORES];
+
 static struct rte_eth_conf port_conf_default = {
     .rxmode = {
         .mq_mode = ETH_MQ_RX_RSS,
@@ -107,7 +112,7 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     int retval;
     uint16_t q;
     uint16_t lcore_id;
-
+    int count;
     if (port >= rte_eth_dev_count())
         return -1;
 
@@ -116,9 +121,42 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
     if (retval != 0)
         return retval;
+
+    printf("Rx Ethernet port [%d]\n \
+            \t RX_RING_SIZE [%d] \
+            \t Socket_id [%d]",
+            port, RX_RING_SIZE, rte_eth_dev_socket_id(port));
+
     printf("config end\n");
 
-#if 1
+    count = 0;
+    for (q = 0; q < RTE_MAX_CORES; q++) {
+    printf(">>>>>>>>>Setup RX Core [%d]<<<<<<<<",q);
+        if (rte_lcore_is_enabled(q)) {
+            map_lcore_to_queue[q] = count;
+            count++;
+            retval = rte_eth_rx_queue_setup(
+                    port, //ethernet port
+                    map_lcore_to_queue[q],
+                    RX_RING_SIZE,
+                    rte_eth_dev_socket_id(port), //socket id for pot 0
+                    NULL, //TODO(shelbyt): No specific RX config but may help)
+                    mbuf_pool);
+        }
+    }
+
+    printf(">>>>>>>>>Setup TX Core<<<<<<<<");
+    retval = rte_eth_tx_queue_setup(
+            port, //ethernet port
+            0,//queue id
+            TX_RING_SIZE,
+            rte_eth_dev_socket_id(port),
+            NULL);
+
+
+
+
+#if 0
     /* Allocate and set up 1 RX queue per Ethernet port(NOPE: Now is 1queue per
      * lcore). */
     for (q = 0; q < rx_rings; q++) {

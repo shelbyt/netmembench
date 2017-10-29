@@ -62,7 +62,7 @@
 #define MAX_SPECIAL_MBUFS   64
 #define aMBUF_CACHE_SIZE     (MAX_MBUFS_PER_PORT/8)
 #define DEFAULT_PRIV_SIZE   0
-#define CACHE SIZE       ((MAX_MBUFS_PER_PORT > RTE_MEMPOOL_CACHE_MAX_SIZE)?RTE_MEMPOOL_CACHE_MAX_SIZE:MAX_MBUFS_PER_PORT)
+#define CACHE_SIZE       ((MAX_MBUFS_PER_PORT > RTE_MEMPOOL_CACHE_MAX_SIZE)?RTE_MEMPOOL_CACHE_MAX_SIZE:MAX_MBUFS_PER_PORT)
 #define MBUF_SIZE (RTE_MBUF_DEFAULT_BUF_SIZE + DEFAULT_PRIV_SIZE) /* See: http://dpdk.org/dev/patchwork/patch/4479/ */
 
 uint32_t map_lcore_to_queue[RTE_MAX_CORES];
@@ -88,6 +88,15 @@ static struct rte_eth_conf port_conf_default = {
         .mq_mode = ETH_MQ_TX_NONE,
     },
 };
+
+static inline void __attribute__((always_inline))
+rte_pktmbuf_free_bulk(struct rte_mbuf *m_list[], int16_t npkts)
+{
+    while (npkts--)
+        rte_pktmbuf_free(*m_list++);
+}
+
+
 
 /*Total Usable lcores*/
 static inline
@@ -230,6 +239,8 @@ slave_bmain(__attribute__((unused)) void *arg)
                     bufs, BURST_SIZE);
             total_packets += nb_rx;
 
+            rte_pktmbuf_free_bulk(bufs,nb_rx);
+
 
             //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
 
@@ -270,8 +281,8 @@ int main(int argc, char *argv[])
     printf("\nPorts are  %d\n", rte_eth_dev_count());
 
     /* Creates a new mempool in memory to hold the mbufs. */
-    mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", NUM_MBUFS * nb_ports,
-            MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+    mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", MAX_MBUFS_PER_PORT,
+            CACHE_SIZE,DEFAULT_PRIV_SIZE , MBUF_SIZE, rte_socket_id());
 
     if (mbuf_pool == NULL)
         rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");

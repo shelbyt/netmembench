@@ -30,7 +30,7 @@
  *   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#include <stdlib.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include <rte_eal.h>
@@ -38,16 +38,20 @@
 #include <rte_cycles.h>
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
+#include <rte_memory.h>
 
 #define RX_RING_SIZE 256
 #define TX_RING_SIZE 512
 
+#define RX_NUM_PACKETS 20000000
 #define NUM_MBUFS (256*1024)//262144// 
 #define MBUF_CACHE_SIZE 256
 
 #define QUEUE_PER_CORE 5
 #define PKRQ_HWQ_IN_BURST 64
 #define BURST_SIZE PKRQ_HWQ_IN_BURST
+#define MEM_ACCESS_PER_PACKET 1
+#define MEM_ACESS_PER_BURST (BURST_SIZE * MEM_ACCESS_PER_PACKET)
 
 //We will iterate over 12 cores to find which are active
 #define RTE_MAX_CORES 24
@@ -67,6 +71,7 @@
 
 uint32_t map_lcore_to_queue[RTE_MAX_CORES];
 uint32_t map_lcore_to_mpps[RTE_MAX_CORES] = {0};
+char *r_mem_chunk;
 
 static struct rte_eth_conf port_conf_default = {
     .rxmode = {
@@ -219,26 +224,53 @@ slave_bmain(__attribute__((unused)) void *arg)
     for (;;) {
 
         int total_time_in_sec = 10;
-        uint64_t p_ticks = total_time_in_sec * rte_get_tsc_hz();
-        uint64_t p_start = rte_get_tsc_cycles();
-        int total_packets  = 0;
+        uint64_t total_packets  = 0;
+        uint64_t real_time_cyc = 0;
+        uint64_t r_int_array[MEM_ACESS_PER_BURST];
 
-        while(rte_get_tsc_cycles() - p_start < p_ticks) {
+    /*Count a number of packets and measure time once completed*/
+        while (total_packets < RX_NUM_PACKETS) {
 
-            /* Get burst of RX packets, from first port of pair. */
+            /*Initialize an array with random values that will be accessed
+             * in the random access array. Two different rand() calls are used
+             * to ensure that the values are sufficiently far away so the mem
+             * chunks are not cached*/
+            int i;
+            for(i=0; i < MEM_ACESS_PER_BURST-1; i=i+2){
+                r_int_array[i] = (rand() % 400000000);
+                r_int_array[i+1] = (rand() % 40000);
+            } 
+
             struct rte_mbuf *bufs[BURST_SIZE];
+            uint64_t in_start  = rte_get_tsc_cycles();
             const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
                     bufs, BURST_SIZE);
-            total_packets += nb_rx;
+
+            /****Memory Access**********/
+            for(i=0; i < MEM_ACESS_PER_BURST; i++){
+                r_mem_chunk[r_int_array[i]] = 'c';
+            }
+            /***************************/
             rte_pktmbuf_free_bulk(bufs,nb_rx);
+            uint64_t in_end = rte_get_tsc_cycles();
+
+            total_packets += nb_rx;
+            real_time_cyc += in_end - in_start;
 
             //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
             if (unlikely(nb_rx == 0)){
                 continue;
             }
         }
-        printf("Total packets [%d], PPS = [%d]\n", total_packets, total_packets/total_time_in_sec);
-        map_lcore_to_mpps[rte_lcore_id()] = total_packets/total_time_in_sec;
+
+        float real_time_sec = ((double)(real_time_cyc)/(rte_get_tsc_hz()));
+
+        printf("(Optimistic) Total packets [%d] in %lf sec: PPS = [%0.lf]\n",
+                real_time_sec,  total_packets, ((float)(total_packets)/(real_time_sec)));
+
+        /*Store total packet count in array to be totaled at the end*/
+        map_lcore_to_mpps[rte_lcore_id()] = ((float)(total_packets)/real_time_sec);
+
         break;
     }
 }
@@ -258,6 +290,11 @@ int main(int argc, char *argv[])
 
     argc -= ret;
     argv += ret;
+
+    // Allocate 1024*1024-> 1mb * 500 which is larger than cache size
+    int bytes = (1024*1024*500);
+    //TODO(shelbyt): Change to rte_malloc currently segfaults using rtemalloc
+    r_mem_chunk = (char*) malloc(bytes);
 
     /* Check that there is an even number of ports to send/receive on. */
     nb_ports = rte_eth_dev_count();
@@ -294,7 +331,7 @@ int main(int argc, char *argv[])
     for(i = 0; i < RTE_MAX_CORES; i++) {
         pps+=map_lcore_to_mpps[i];
     }
-    printf("\n\tTotal PPS -> [%d]\n", pps);
+    printf("\n\tTotal MPPS -> [%d]\n", pps/1000000);
 
     return 0;
 }

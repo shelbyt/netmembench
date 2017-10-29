@@ -66,6 +66,7 @@
 #define MBUF_SIZE (RTE_MBUF_DEFAULT_BUF_SIZE + DEFAULT_PRIV_SIZE) /* See: http://dpdk.org/dev/patchwork/patch/4479/ */
 
 uint32_t map_lcore_to_queue[RTE_MAX_CORES];
+uint32_t map_lcore_to_mpps[RTE_MAX_CORES] = {0};
 
 static struct rte_eth_conf port_conf_default = {
     .rxmode = {
@@ -248,9 +249,8 @@ slave_bmain(__attribute__((unused)) void *arg)
                 continue;
             }
         }
-        printf("lcore %d, RX Rate: %lf GBPS \n", rte_lcore_id(),
-            (double)8 * total_packets * (PACKET_SIZE+42) / total_time_in_sec / 1000 /1000 /1000 );
         printf("Total packets [%d], PPS = [%d]\n", total_packets, total_packets/total_time_in_sec);
+        map_lcore_to_mpps[rte_lcore_id()] = total_packets/total_time_in_sec;
         break;
     }
 }
@@ -306,7 +306,13 @@ int main(int argc, char *argv[])
     //rte_eal_remote_launch(slave_main, NULL, 1);
 
     rte_eal_mp_wait_lcore();
-    //lcore_main();
+
+    int i;
+    int pps = 0;
+    for(i = 0; i < RTE_MAX_CORES; i++) {
+        pps+=map_lcore_to_mpps[i];
+    }
+    printf("\n\tTotal PPS -> [%d]\n", pps);
 
     return 0;
 }

@@ -54,7 +54,7 @@
 #define PACKET_SIZE 1536
 
 #define DEFAULT_PKT_BURST   64   /* Increasing this number consumes memory very fast */
-#define DEFAULT_RX_DESC     (DEFAULT_PKT_BURST*8)
+#define DEFAULT_RX_DESC     (DEFAULT_PKT_BURST*8*2)
 #define DEFAULT_TX_DESC     (DEFAULT_RX_DESC*2)
 
 //Also known as nb_mbufs

@@ -95,7 +95,7 @@ static struct rte_eth_conf port_conf_default = {
     },
 };
 
-static inline void __attribute__((always_inline))
+    static inline void __attribute__((always_inline))
 rte_pktmbuf_free_bulk(struct rte_mbuf *m_list[], int16_t npkts)
 {
     while (npkts--)
@@ -103,7 +103,7 @@ rte_pktmbuf_free_bulk(struct rte_mbuf *m_list[], int16_t npkts)
 }
 
 /*Total Usable lcores*/
-static inline
+    static inline
 uint32_t total_num_lcores(void)
 {
     uint32_t total = 0;
@@ -128,12 +128,10 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     struct rte_eth_conf port_conf = port_conf_default;
     int retval;
     uint16_t q;
-    uint16_t lcore_id;
     int count;
     if (port >= rte_eth_dev_count())
         return -1;
 
-    printf("config start\n");
     /* Configure the Ethernet device. */
     retval = rte_eth_dev_configure(port,total_num_lcores() , 1, &port_conf);
     if (retval != 0)
@@ -143,8 +141,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
             \t RX_RING_SIZE [%d]\n \
             \t Socket_id [%d]\n",
             port, RX_RING_SIZE, rte_eth_dev_socket_id(port));
-
-    printf("config end\n");
 
     count = 0;
     // TODO (shelbyt): Check retval
@@ -199,9 +195,7 @@ slave_bmain(__attribute__((unused)) void *arg)
 
     const uint8_t nb_ports = rte_eth_dev_count();
     uint8_t port;
-    struct slave_args *s_args = (struct slave_args*)arg;
     int queue_id = map_lcore_to_queue[rte_lcore_id()];
-    int tx_queue_id = 0;
 
     printf("Slave: Core [%d], Queue[%d]\n",rte_lcore_id(), queue_id );
 
@@ -220,59 +214,49 @@ slave_bmain(__attribute__((unused)) void *arg)
     printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
             rte_lcore_id());
 
-    /* Run until the application is quit or killed. */
-    for (;;) {
-
-        int total_time_in_sec = 10;
+    /*Count a number of packets and measure time once completed*/
+    while (total_packets < RX_NUM_PACKETS) {
         uint64_t total_packets  = 0;
         uint64_t real_time_cyc = 0;
         uint64_t r_int_array[MEM_ACESS_PER_BURST];
 
-    /*Count a number of packets and measure time once completed*/
-        while (total_packets < RX_NUM_PACKETS) {
+        /*Initialize an array with random values that will be accessed
+         * in the random access array. Two different rand() calls are used
+         * to ensure that the values are sufficiently far away so the mem
+         * chunks are not cached*/
+        int i;
+        for(i=0; i < MEM_ACESS_PER_BURST-1; i=i+2){
+            r_int_array[i] = (rand() % 400000000);
+            r_int_array[i+1] = (rand() % 40000);
+        } 
 
-            /*Initialize an array with random values that will be accessed
-             * in the random access array. Two different rand() calls are used
-             * to ensure that the values are sufficiently far away so the mem
-             * chunks are not cached*/
-            int i;
-            for(i=0; i < MEM_ACESS_PER_BURST-1; i=i+2){
-                r_int_array[i] = (rand() % 400000000);
-                r_int_array[i+1] = (rand() % 40000);
-            } 
+        struct rte_mbuf *bufs[BURST_SIZE];
+        uint64_t in_start  = rte_get_tsc_cycles();
+        const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
+                bufs, BURST_SIZE);
 
-            struct rte_mbuf *bufs[BURST_SIZE];
-            uint64_t in_start  = rte_get_tsc_cycles();
-            const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
-                    bufs, BURST_SIZE);
-
-            /****Memory Access**********/
-            for(i=0; i < MEM_ACESS_PER_BURST; i++){
-                r_mem_chunk[r_int_array[i]] = 'c';
-            }
-            /***************************/
-            rte_pktmbuf_free_bulk(bufs,nb_rx);
-            uint64_t in_end = rte_get_tsc_cycles();
-
-            total_packets += nb_rx;
-            real_time_cyc += in_end - in_start;
-
-            //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
-            if (unlikely(nb_rx == 0)){
-                continue;
-            }
+        /****Memory Access**********/
+        for(i=0; i < MEM_ACESS_PER_BURST; i++){
+            r_mem_chunk[r_int_array[i]] = 'c';
         }
+        /***************************/
+        rte_pktmbuf_free_bulk(bufs,nb_rx);
+        uint64_t in_end = rte_get_tsc_cycles();
 
-        float real_time_sec = ((double)(real_time_cyc)/(rte_get_tsc_hz()));
+        total_packets += nb_rx;
+        real_time_cyc += in_end - in_start;
 
-        printf("(Optimistic) Total packets [%d] in %lf sec: PPS = [%0.lf]\n",
-                real_time_sec,  total_packets, ((float)(total_packets)/(real_time_sec)));
-
-        /*Store total packet count in array to be totaled at the end*/
-        map_lcore_to_mpps[rte_lcore_id()] = ((float)(total_packets)/real_time_sec);
-
-        break;
+        //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
+        if (unlikely(nb_rx == 0))
+            continue;
     }
+
+    float real_time_sec = ((double)(real_time_cyc)/(rte_get_tsc_hz()));
+    printf("(Optimistic) Total packets [%" PRIu64 "] in %lf sec: PPS = [%0.lf]\n",
+            total_packets, real_time_sec, ((float)(total_packets)/(real_time_sec)));
+
+    /*Store total packet count in array to be totaled at the end*/
+    map_lcore_to_mpps[rte_lcore_id()] = ((float)(total_packets)/real_time_sec);
 }
 
 int main(int argc, char *argv[])
@@ -281,7 +265,6 @@ int main(int argc, char *argv[])
     unsigned nb_ports;
     uint8_t portid;
     uint32_t id_core;
-    struct rte_eth_dev_info dev_info;
 
     /* Initialize the Environment Abstraction Layer (EAL). */
     int ret = rte_eal_init(argc, argv);
@@ -293,6 +276,7 @@ int main(int argc, char *argv[])
 
     // Allocate 1024*1024-> 1mb * 500 which is larger than cache size
     int bytes = (1024*1024*500);
+
     //TODO(shelbyt): Change to rte_malloc currently segfaults using rtemalloc
     r_mem_chunk = (char*) malloc(bytes);
 

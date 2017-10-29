@@ -42,15 +42,28 @@
 #define RX_RING_SIZE 256
 #define TX_RING_SIZE 512
 
-#define NUM_MBUFS (256*1024)//65534// 
+#define NUM_MBUFS (256*1024)//262144// 
 #define MBUF_CACHE_SIZE 256
-#define BURST_SIZE 32
 
 #define QUEUE_PER_CORE 5
 #define TOTAL_QUEUES QUEUE_PER_CORE * rte_lcore_count()
+#define PKRQ_HWQ_IN_BURST 64
+#define BURST_SIZE PKRQ_HWQ_IN_BURST
 
 //We will iterate over 12 cores to find which are active
-#define RTE_MAX_CORES 12 
+#define RTE_MAX_CORES 24
+#define PACKET_SIZE 1536
+
+#define DEFAULT_PKT_BURST       = 64,   /* Increasing this number consumes memory very fast */
+#define DEFAULT_RX_DESC         = (DEFAULT_PKT_BURST * 8),
+#define DEFAULT_TX_DESC         = DEFAULT_RX_DESC * 2,
+#define MAX_MBUFS_PER_PORT      = (DEFAULT_TX_DESC * 8),/* number of buffers to support per port */
+#define MAX_SPECIAL_MBUFS       = 64,
+#define MBUF_CACHE_SIZE         = (MAX_MBUFS_PER_PORT / 8),
+#define DEFAULT_PRIV_SIZE       = 0,
+#define MBUF_SIZE       = RTE_MBUF_DEFAULT_BUF_SIZE + DEFAULT_PRIV_SIZE, /* See: http://dpdk.org/dev/patchwork/patch/4479/ */
+
+
 
 #if 1
 uint32_t map_lcore_to_queue[RTE_MAX_CORES];
@@ -183,6 +196,10 @@ slave_bmain(__attribute__((unused)) void *arg)
     struct slave_args *s_args = (struct slave_args*)arg;
     int queue_id = map_lcore_to_queue[rte_lcore_id()];
     int tx_queue_id = 0;
+
+
+
+
     printf("Slave: Core [%d], Queue[%d]\n",rte_lcore_id(), queue_id );
 
 
@@ -206,27 +223,48 @@ slave_bmain(__attribute__((unused)) void *arg)
     /* Run until the application is quit or killed. */
     for (;;) {
 
+        int total_time_in_sec = 10;
+        uint64_t p_ticks = total_time_in_sec * rte_get_tsc_hz();
+        uint64_t p_start = rte_get_tsc_cycles();
+        int total_packets  = 0;
 
-        /* Get burst of RX packets, from first port of pair. */
-        struct rte_mbuf *bufs[BURST_SIZE];
-        const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
-                bufs, BURST_SIZE);
-        //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
+        while(rte_get_tsc_cycles() - p_start < p_ticks) {
 
 
-        if (unlikely(nb_rx == 0))
-            continue;
 
-        /* Send burst of TX packets, to second port of pair. */
-        const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, tx_queue_id,
-                bufs, nb_rx);
+            /* Get burst of RX packets, from first port of pair. */
+            struct rte_mbuf *bufs[BURST_SIZE];
 
-        /* Free any unsent packets. */
-        if (unlikely(nb_tx < nb_rx)) {
-            uint16_t buf;
-            for (buf = nb_tx; buf < nb_rx; buf++)
-                rte_pktmbuf_free(bufs[buf]);
+            const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
+                    bufs, BURST_SIZE);
+            total_packets += nb_rx;
+
+
+            //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
+
+
+            if (unlikely(nb_rx == 0)){
+                continue;
+            }
+
+#if 0 
+            /* Send burst of TX packets, to second port of pair. */
+            const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, tx_queue_id,
+                    bufs, nb_rx);
+
+            /* Free any unsent packets. */
+            if (unlikely(nb_tx < nb_rx)) {
+                uint16_t buf;
+                for (buf = nb_tx; buf < nb_rx; buf++)
+                    rte_pktmbuf_free(bufs[buf]);
+            }
+#endif
         }
+        printf("lcore %d, RX Rate: %lf GBPS \n", rte_lcore_id(),
+                //(double)8 * rounds * PKTQ_HWQ_OUT_BURST_SIZE * (PACKET_SIZE+42) / total_time_in_sec / 1000 /1000 /1000 );
+            (double)8 * total_packets * (PACKET_SIZE+42) / total_time_in_sec / 1000 /1000 /1000 );
+        printf("Total packets [%d], PPS = [%d]\n", total_packets, total_packets/total_time_in_sec);
+        break;
     }
 }
 
@@ -281,7 +319,7 @@ int main(int argc, char *argv[])
     RTE_LCORE_FOREACH_SLAVE(id_core) {
         rte_eal_remote_launch(slave_bmain, NULL, id_core);
     }
-    //slave_bmain(NULL);
+    slave_bmain(NULL);
     //rte_eal_remote_launch(slave_main, NULL, 1);
 
     rte_eal_mp_wait_lcore();

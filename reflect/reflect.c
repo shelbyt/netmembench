@@ -97,8 +97,6 @@ rte_pktmbuf_free_bulk(struct rte_mbuf *m_list[], int16_t npkts)
         rte_pktmbuf_free(*m_list++);
 }
 
-
-
 /*Total Usable lcores*/
 static inline
 uint32_t total_num_lcores(void)
@@ -123,10 +121,6 @@ uint32_t total_num_lcores(void)
 port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 {
     struct rte_eth_conf port_conf = port_conf_default;
-#if 0
-    const uint16_t rx_rings = 1, tx_rings = 1;
-#endif
-
     int retval;
     uint16_t q;
     uint16_t lcore_id;
@@ -231,20 +225,14 @@ slave_bmain(__attribute__((unused)) void *arg)
 
         while(rte_get_tsc_cycles() - p_start < p_ticks) {
 
-
-
             /* Get burst of RX packets, from first port of pair. */
             struct rte_mbuf *bufs[BURST_SIZE];
-
             const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
                     bufs, BURST_SIZE);
             total_packets += nb_rx;
-
             rte_pktmbuf_free_bulk(bufs,nb_rx);
 
-
             //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
-
             if (unlikely(nb_rx == 0)){
                 continue;
             }
@@ -255,10 +243,6 @@ slave_bmain(__attribute__((unused)) void *arg)
     }
 }
 
-/*
- * The main function, which does initialization and calls the per-lcore
- * functions.
- */
 int main(int argc, char *argv[])
 {
     struct rte_mempool *mbuf_pool;
@@ -277,8 +261,6 @@ int main(int argc, char *argv[])
 
     /* Check that there is an even number of ports to send/receive on. */
     nb_ports = rte_eth_dev_count();
-
-    printf("\nPorts are  %d\n", rte_eth_dev_count());
 
     /* Creates a new mempool in memory to hold the mbufs. */
     mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", MAX_MBUFS_PER_PORT,

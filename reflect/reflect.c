@@ -46,7 +46,6 @@
 #define MBUF_CACHE_SIZE 256
 
 #define QUEUE_PER_CORE 5
-#define TOTAL_QUEUES QUEUE_PER_CORE * rte_lcore_count()
 #define PKRQ_HWQ_IN_BURST 64
 #define BURST_SIZE PKRQ_HWQ_IN_BURST
 
@@ -54,14 +53,19 @@
 #define RTE_MAX_CORES 24
 #define PACKET_SIZE 1536
 
-#define DEFAULT_PKT_BURST       = 64,   /* Increasing this number consumes memory very fast */
-#define DEFAULT_RX_DESC         = (DEFAULT_PKT_BURST * 8),
-#define DEFAULT_TX_DESC         = DEFAULT_RX_DESC * 2,
-#define MAX_MBUFS_PER_PORT      = (DEFAULT_TX_DESC * 8),/* number of buffers to support per port */
-#define MAX_SPECIAL_MBUFS       = 64,
-#define MBUF_CACHE_SIZE         = (MAX_MBUFS_PER_PORT / 8),
-#define DEFAULT_PRIV_SIZE       = 0,
-#define MBUF_SIZE       = RTE_MBUF_DEFAULT_BUF_SIZE + DEFAULT_PRIV_SIZE, /* See: http://dpdk.org/dev/patchwork/patch/4479/ */
+#define DEFAULT_PKT_BURST   64   /* Increasing this number consumes memory very fast */
+#define DEFAULT_RX_DESC     (DEFAULT_PKT_BURST*8)
+#define DEFAULT_TX_DESC     (DEFAULT_RX_DESC*2)
+
+//Also known as nb_mbufs
+#define MAX_MBUFS_PER_PORT  (DEFAULT_TX_DESC*8)/* number of buffers to support per port */
+#define MAX_SPECIAL_MBUFS   64
+#define aMBUF_CACHE_SIZE     (MAX_MBUFS_PER_PORT/8)
+#define DEFAULT_PRIV_SIZE   0
+#define CACHE SIZE       ((MAX_MBUFS_PER_PORT > RTE_MEMPOOL_CACHE_MAX_SIZE)?RTE_MEMPOOL_CACHE_MAX_SIZE:MAX_MBUFS_PER_PORT)
+
+
+#define MBUF_SIZE (RTE_MBUF_DEFAULT_BUF_SIZE + DEFAULT_PRIV_SIZE) /* See: http://dpdk.org/dev/patchwork/patch/4479/ */
 
 
 
@@ -92,7 +96,8 @@ static struct rte_eth_conf port_conf_default = {
 #endif
 
 /*Total Usable lcores*/
-uint32_t total_num_lcores()
+static inline
+uint32_t total_num_lcores(void)
 {
     uint32_t total = 0;
     uint32_t i;

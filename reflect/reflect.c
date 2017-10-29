@@ -63,13 +63,8 @@
 #define aMBUF_CACHE_SIZE     (MAX_MBUFS_PER_PORT/8)
 #define DEFAULT_PRIV_SIZE   0
 #define CACHE SIZE       ((MAX_MBUFS_PER_PORT > RTE_MEMPOOL_CACHE_MAX_SIZE)?RTE_MEMPOOL_CACHE_MAX_SIZE:MAX_MBUFS_PER_PORT)
-
-
 #define MBUF_SIZE (RTE_MBUF_DEFAULT_BUF_SIZE + DEFAULT_PRIV_SIZE) /* See: http://dpdk.org/dev/patchwork/patch/4479/ */
 
-
-
-#if 1
 uint32_t map_lcore_to_queue[RTE_MAX_CORES];
 
 static struct rte_eth_conf port_conf_default = {
@@ -93,7 +88,6 @@ static struct rte_eth_conf port_conf_default = {
         .mq_mode = ETH_MQ_TX_NONE,
     },
 };
-#endif
 
 /*Total Usable lcores*/
 static inline
@@ -110,7 +104,6 @@ uint32_t total_num_lcores(void)
     }
     return total;
 }
-
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -191,7 +184,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     return 0;
 }
 
-
     static __attribute__((unused)) int
 slave_bmain(__attribute__((unused)) void *arg)
 {
@@ -202,13 +194,7 @@ slave_bmain(__attribute__((unused)) void *arg)
     int queue_id = map_lcore_to_queue[rte_lcore_id()];
     int tx_queue_id = 0;
 
-
-
-
     printf("Slave: Core [%d], Queue[%d]\n",rte_lcore_id(), queue_id );
-
-
-    printf("**NB_PORTS is %d\n*", rte_eth_dev_count());
 
     /*
      * Check that the port is on the same NUMA node as the polling thread
@@ -247,26 +233,11 @@ slave_bmain(__attribute__((unused)) void *arg)
 
             //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
 
-
             if (unlikely(nb_rx == 0)){
                 continue;
             }
-
-#if 0 
-            /* Send burst of TX packets, to second port of pair. */
-            const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, tx_queue_id,
-                    bufs, nb_rx);
-
-            /* Free any unsent packets. */
-            if (unlikely(nb_tx < nb_rx)) {
-                uint16_t buf;
-                for (buf = nb_tx; buf < nb_rx; buf++)
-                    rte_pktmbuf_free(bufs[buf]);
-            }
-#endif
         }
         printf("lcore %d, RX Rate: %lf GBPS \n", rte_lcore_id(),
-                //(double)8 * rounds * PKTQ_HWQ_OUT_BURST_SIZE * (PACKET_SIZE+42) / total_time_in_sec / 1000 /1000 /1000 );
             (double)8 * total_packets * (PACKET_SIZE+42) / total_time_in_sec / 1000 /1000 /1000 );
         printf("Total packets [%d], PPS = [%d]\n", total_packets, total_packets/total_time_in_sec);
         break;
@@ -284,7 +255,6 @@ int main(int argc, char *argv[])
     uint8_t portid;
     uint32_t id_core;
     struct rte_eth_dev_info dev_info;
-
 
     /* Initialize the Environment Abstraction Layer (EAL). */
     int ret = rte_eal_init(argc, argv);
@@ -312,13 +282,10 @@ int main(int argc, char *argv[])
             rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n",
                     portid);
 #if 0
-
     id_core = rte_get_next_lcore(id_core, 1, 1);
     printf("id_Core ->  %d \n", id_core);
 
     printf("Using %d lcores\n", rte_lcore_count());
-
-
 #endif
 
     RTE_LCORE_FOREACH_SLAVE(id_core) {

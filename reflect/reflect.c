@@ -214,11 +214,11 @@ slave_bmain(__attribute__((unused)) void *arg)
     printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
             rte_lcore_id());
 
+    uint64_t total_packets  = 0;
+    uint64_t real_time_cyc = 0;
+    uint64_t r_int_array[MEM_ACESS_PER_BURST];
     /*Count a number of packets and measure time once completed*/
     while (total_packets < RX_NUM_PACKETS) {
-        uint64_t total_packets  = 0;
-        uint64_t real_time_cyc = 0;
-        uint64_t r_int_array[MEM_ACESS_PER_BURST];
 
         /*Initialize an array with random values that will be accessed
          * in the random access array. Two different rand() calls are used

@@ -47,6 +47,7 @@
 #define NUM_MBUFS (256*1024)//262144// 
 #define MBUF_CACHE_SIZE 256
 
+#define PORT_ID 1
 #define QUEUE_PER_CORE 5
 #define PKRQ_HWQ_IN_BURST 64
 #define BURST_SIZE PKRQ_HWQ_IN_BURST
@@ -57,7 +58,7 @@
 #define RTE_MAX_CORES 24
 #define PACKET_SIZE 1536
 
-#define DEFAULT_PKT_BURST   64   /* Increasing this number consumes memory very fast */
+#define DEFAULT_PKT_BURST   BURST_SIZE   /* Increasing this number consumes memory very fast */
 #define DEFAULT_RX_DESC     (DEFAULT_PKT_BURST*8*2)
 #define DEFAULT_TX_DESC     (DEFAULT_RX_DESC*2)
 
@@ -232,13 +233,16 @@ slave_bmain(__attribute__((unused)) void *arg)
 
         struct rte_mbuf *bufs[BURST_SIZE];
         uint64_t in_start  = rte_get_tsc_cycles();
-        const uint16_t nb_rx = rte_eth_rx_burst(port ^ 1, queue_id,
+        /* The current device the link is plugged into PORT_ID*/
+        const uint16_t nb_rx = rte_eth_rx_burst(PORT_ID, queue_id,
                 bufs, BURST_SIZE);
 
         /****Memory Access**********/
+#if 1
         for(i=0; i < MEM_ACESS_PER_BURST; i++){
             r_mem_chunk[r_int_array[i]] = 'c';
         }
+#endif
         /***************************/
         rte_pktmbuf_free_bulk(bufs,nb_rx);
         uint64_t in_end = rte_get_tsc_cycles();
@@ -257,6 +261,7 @@ slave_bmain(__attribute__((unused)) void *arg)
 
     /*Store total packet count in array to be totaled at the end*/
     map_lcore_to_mpps[rte_lcore_id()] = ((float)(total_packets)/real_time_sec);
+    return 0;
 }
 
 int main(int argc, char *argv[])

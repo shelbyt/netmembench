@@ -1,4 +1,5 @@
 import matplotlib
+from matplotlib import rc
 matplotlib.use("Agg")
 import sys
 import matplotlib.pyplot as plt
@@ -7,6 +8,13 @@ import collections
 import numpy as np
 import pandas as pd
 import seaborn as sns
+
+
+#rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+## for Palatino and other serif fonts use:
+rc('font',**{'family':'serif','serif':['Palatino']})
+rc('text', usetex=True)
+
 
 PACKETS_SENT=100000000
 
@@ -76,12 +84,12 @@ SMALL_SIZE = 16
 MEDIUM_SIZE = 22
 BIGGER_SIZE = 32
 
-plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
 plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
-plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
+plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 ##################################
 
@@ -89,7 +97,10 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 
 clist = []
-fig,axes = plt.subplots(nrows=1, ncols=1,figsize=(36,15))
+fig,axes = plt.subplots(nrows=1, ncols=1,figsize=(20,15))
+
+major_ticks=np.arange(0,1,20)
+axes.set_yticks(major_ticks)
 
 for key in o_pdict:
     clist.append((key, o_pdict[key][0]))
@@ -99,7 +110,7 @@ for key in o_pdict:
 
 df = pd.DataFrame(data=clist, columns=['mem access', 'PDR'])
 sns.set_color_codes('muted')
-sns_plot = sns.barplot(x='mem access', y='PDR', data=df, color="b")
+sns_plot = sns.barplot(x='mem access', y='PDR', data=df, color="b", capsize=.05)
 
 
 fig = sns_plot.get_figure()

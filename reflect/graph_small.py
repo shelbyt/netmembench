@@ -55,16 +55,20 @@ def stddev(data, ddof=0):
 for ffile in file_arr:
     fp = open(dir_prefix+ffile)
     mem_access=int(ffile.split('_')[1])
-    if mem_access not in pdict:
-        pdict[mem_access] = []
+    cores = (ffile.split('_')[2])
+    if (mem_access,cores) not in pdict:
+        pdict[(mem_access,cores)] = []
     for i, line in enumerate(fp):
-        if i == 47:
+        #if i == 47:
+        if line.startswith("ipackets="):
             packet_rate = 1-(float(line.split('=')[1].strip('\n'))/PACKETS_SENT)
-            pdict[mem_access].append(packet_rate)
+            pdict[(mem_access,cores)].append(packet_rate)
     fp.close()
 
 
 o_pdict = collections.OrderedDict(sorted(pdict.items()))
+#print o_pdict
+#quit()
 
 
 
@@ -99,18 +103,17 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 clist = []
 fig,axes = plt.subplots(nrows=1, ncols=1,figsize=(20,15))
 
-major_ticks=np.arange(0,1,20)
-axes.set_yticks(major_ticks)
+#major_ticks=np.arange(0,1,20)
+#axes.set_yticks(major_ticks)
 
-for key in o_pdict:
-    clist.append((key, o_pdict[key][0]))
-    clist.append((key, o_pdict[key][1]))
-    clist.append((key, o_pdict[key][2]))
-    clist.append((key, o_pdict[key][3]))
+for (mem,core) in o_pdict:
+    clist.append((mem, o_pdict[(mem,core)][0], core))
+    clist.append((mem, o_pdict[(mem,core)][1], core))
+    clist.append((mem, o_pdict[(mem,core)][2], core))
 
-df = pd.DataFrame(data=clist, columns=['mem access', 'PDR'])
+df = pd.DataFrame(data=clist, columns=['mem access', 'PDR', 'Core'])
 sns.set_color_codes('muted')
-sns_plot = sns.barplot(x='mem access', y='PDR', data=df, color="b", capsize=.05)
+sns_plot = sns.barplot(x='mem access', y='PDR',hue='Core', data=df, color="b", capsize=.05)
 
 
 fig = sns_plot.get_figure()

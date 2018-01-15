@@ -49,7 +49,7 @@
 #include <unistd.h>
 #include <signal.h>
 
-#define PRINTME 10
+#define MEM_ACCESS_PER_PACKET 32
 
 #define RX_RING_SIZE 256
 #define TX_RING_SIZE 512
@@ -64,7 +64,6 @@
 #define QUEUE_PER_CORE 5
 #define PKRQ_HWQ_IN_BURST 64
 #define BURST_SIZE PKRQ_HWQ_IN_BURST
-#define MEM_ACCESS_PER_PACKET 10
 #define MEM_ACESS_PER_BURST (BURST_SIZE * MEM_ACCESS_PER_PACKET)
 
 //We will iterate over 12 cores to find which are active
@@ -195,15 +194,23 @@ static void print_eth_info(uint8_t port_id){
         link.link_speed, link.link_duplex, link.link_autoneg, link.link_status);
 
     rte_eth_stats_get(port_id, &stats);
+
+
+
+
     printf("Stats for port %u:\n", port_id);
-    printf("ipackets=%"PRIu64"\topackets=%"PRIu64"\n", stats.ipackets, stats.opackets);
-    printf("ibytes=%"PRIu64"\tobytes=%"PRIu64"\n", stats.ibytes, stats.obytes);
+
+
+    printf("ipackets=%"PRIu64"\n", stats.ipackets);
+    printf("ibytes=%"PRIu64"\n", stats.ibytes);
+    //printf("ipackets=%"PRIu64"\topackets=%"PRIu64"\n", stats.ipackets, stats.opackets);
+    //printf("ibytes=%"PRIu64"\tobytes=%"PRIu64"\n", stats.ibytes, stats.obytes);
     printf("imissed=%"PRIu64"\n", stats.imissed);
     printf("ierrors=%"PRIu64"\toerrors=%"PRIu64"\n", stats.ierrors, stats.oerrors);
     printf("rx_nombuf=%"PRIu64"\n", stats.rx_nombuf);
     int i;
 
-    for(i =0; i < 1; i++){
+    for(i =0; i < 10; i++){
 
     printf("q__ipackets=%"PRIu64"\topackets=%"PRIu64"\n", stats.q_ipackets[i], stats.q_opackets[i]);
     printf("q__ibytes=%"PRIu64"\tobytes=%"PRIu64"\n", stats.q_ibytes[i], stats.q_obytes[i]);
@@ -405,7 +412,7 @@ slave_bmain(__attribute__((unused)) void *arg)
         /****Memory Access**********/
 
 #if 1
-        for(i = 0; i < nb_rx*15; i++){
+        for(i = 0; i < nb_rx*MEM_ACCESS_PER_PACKET; i++){
         r_mem_chunk[memory_array_index] = 'c';
         memory_array_index = (memory_array_index+stride_size)%mem_size;
         }
@@ -455,13 +462,14 @@ slave_bmain(__attribute__((unused)) void *arg)
     }
         real_time_cyc = 0;
         printf("no-delte-me->%p\n", r_mem_chunk);
-
+#if 1
     float real_time_sec = ((double)(real_time_cyc)/(rte_get_tsc_hz()));
     printf("(Optimistic) Total packets [%" PRIu64 "] in %lf sec: PPS = [%0.lf]\n",
             total_packets, real_time_sec, ((float)(total_packets)/(real_time_sec)));
 
     /*Store total packet count in array to be totaled at the end*/
     map_lcore_to_mpps[rte_lcore_id()] = ((float)(total_packets)/real_time_sec);
+#endif
     return 0;
 }
 
@@ -474,10 +482,8 @@ void intHandler(int dummy) {
 
 int main(int argc, char *argv[])
 {
-    printf("%d\n",PRINTME);
-    exit(0);
 
-    //signal(SIGINT, intHandler);
+    signal(SIGINT, intHandler);
 
     struct rte_mempool *mbuf_pool;
     unsigned nb_ports;
@@ -498,7 +504,7 @@ int main(int argc, char *argv[])
 
     //TODO(shelbyt): Change to rte_malloc currently segfaults using rtemalloc
     r_mem_chunk = (char*) malloc(bytes);
-
+#if 0
     //Fill array with random shit so we can access later-/ 
     //---------------------------------------------------/
     static const char alphanum[] = 
@@ -512,12 +518,8 @@ int main(int argc, char *argv[])
 
     r_mem_chunk[bytes] = 0;
     printf("mem chunk random %c\n",r_mem_chunk[rand()%bytes]);
-
-
-    
-    
-    
     //---------------------------------------------------/
+#endif
     
     
 

@@ -70,7 +70,7 @@
 /* Hash parameters. */
 #ifdef RTE_ARCH_64
 /* default to 4 million hash entries (approx) */
-#define L3FWD_HASH_ENTRIES		(1024*1024*4)
+#define L3FWD_HASH_ENTRIES		(1024*1024*8)
 #else
 /* 32-bit has less address-space for hugepage memory, limit to 1M entries */
 #define L3FWD_HASH_ENTRIES		(1024*1024*1)
@@ -108,6 +108,7 @@ extern struct ether_addr ports_eth_addr[RTE_MAX_ETHPORTS];
 extern uint32_t enabled_port_mask;
 
 extern int lpm_ipv4_table_size_dynamic;
+// extern int em_ipv4_table_size_dynamic;
 
 /* Used only in exact match mode. */
 extern int ipv6; /**< ipv6 is false by default. */

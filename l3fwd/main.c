@@ -471,15 +471,18 @@ parse_eth_dest(const char *optarg)
 	*(uint64_t *)(val_eth + portid) = dest_eth_addr[portid];
 }
 
-static void
-parse_lpm_table_size(const char *optarg)
+static int
+parse_table_size(const char *optarg)
 {
-	lpm_ipv4_table_size_dynamic = strtol(optarg, NULL, 10);
-	if(lpm_ipv4_table_size_dynamic <= 0) {
+	int table_size = strtol(optarg, NULL, 10);
+	if(table_size <= 0) {
 		rte_exit(EXIT_FAILURE,
 				 "Invalid table size: %s\n",
 				 optarg);
 	}
+	lpm_ipv4_table_size_dynamic = table_size;
+	// em_ipv4_table_size_dynamic = table_size;
+	return table_size;
 }
 
 #define MAX_JUMBO_PKT_LEN  9600
@@ -663,8 +666,8 @@ parse_args(int argc, char **argv)
 			if (!strncmp(lgopts[option_index].name,
 					CMD_LINE_OPT_TABLE_SIZE,
 					sizeof(CMD_LINE_OPT_TABLE_SIZE))) {
-				parse_lpm_table_size(optarg);
-				printf("%s%d\n", str14, lpm_ipv4_table_size_dynamic);
+				int table_size = parse_table_size(optarg);
+				printf("%s%d\n", str14, table_size);
 			}
 
 			break;

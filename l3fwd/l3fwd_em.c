@@ -128,12 +128,27 @@ struct ipv6_l3fwd_em_route {
 	uint8_t if_out;
 };
 
+// static struct ipv4_l3fwd_em_route ipv4_l3fwd_em_route_array[] = {
+// 	{{IPv4(101, 0, 0, 0), IPv4(100, 10, 0, 1),  101, 11, IPPROTO_TCP}, 0},
+// 	{{IPv4(201, 0, 0, 0), IPv4(200, 20, 0, 1),  102, 12, IPPROTO_TCP}, 1},
+// 	{{IPv4(111, 0, 0, 0), IPv4(100, 30, 0, 1),  101, 11, IPPROTO_TCP}, 2},
+// 	{{IPv4(211, 0, 0, 0), IPv4(200, 40, 0, 1),  102, 12, IPPROTO_TCP}, 3},
+// };
 static struct ipv4_l3fwd_em_route ipv4_l3fwd_em_route_array[] = {
-	{{IPv4(101, 0, 0, 0), IPv4(100, 10, 0, 1),  101, 11, IPPROTO_TCP}, 0},
-	{{IPv4(201, 0, 0, 0), IPv4(200, 20, 0, 1),  102, 12, IPPROTO_TCP}, 1},
-	{{IPv4(111, 0, 0, 0), IPv4(100, 30, 0, 1),  101, 11, IPPROTO_TCP}, 2},
-	{{IPv4(211, 0, 0, 0), IPv4(200, 40, 0, 1),  102, 12, IPPROTO_TCP}, 3},
+	{{IPv4(1, 0, 0, 0), IPv4(7, 7, 7, 7), 8888, 7777, IPPROTO_UDP}, 0},
+	{{IPv4(3, 0, 0, 0), IPv4(7, 7, 7, 7), 8888, 7777, IPPROTO_UDP}, 1},
+	{{IPv4(111, 0, 0, 0), IPv4(100, 30, 0, 1),  101, 11, IPPROTO_UDP}, 2},
+	{{IPv4(211, 0, 0, 0), IPv4(200, 40, 0, 1),  102, 12, IPPROTO_UDP}, 3},
 };
+// int em_ipv4_table_size_dynamic = -1;
+// static unsigned char ipv4_em_dynamic_default_subnet = 8;
+// static struct ipv4_5tuple ipv4_em_dynamic_default_tuple = {
+// 	.ip_dst = IPv4(ipv4_em_dynamic_default_subnet, 0, 0, 0),
+// 	.ip_src = IPv4(7, 7, 7, 7),
+// 	.port_dst = 8888,
+// 	.port_src = 7777,
+// 	.proto = IPPROTO_UDP,
+// };
 
 static struct ipv6_l3fwd_em_route ipv6_l3fwd_em_route_array[] = {
 	{{
@@ -428,7 +443,7 @@ populate_ipv6_few_flow_into_table(const struct rte_hash *h)
 		(uint64_t)IPV6_L3FWD_EM_NUM_ROUTES);
 }
 
-#define NUMBER_PORT_USED 4
+#define NUMBER_PORT_USED 2
 static inline void
 populate_ipv4_many_flow_into_table(const struct rte_hash *h,
 		unsigned int nr_flow)
@@ -454,11 +469,11 @@ populate_ipv4_many_flow_into_table(const struct rte_hash *h,
 		switch (i & (NUMBER_PORT_USED - 1)) {
 		case 0:
 			entry = ipv4_l3fwd_em_route_array[0];
-			entry.key.ip_dst = IPv4(101, c, b, a);
+			entry.key.ip_dst = IPv4(1, c, b, a);
 			break;
 		case 1:
 			entry = ipv4_l3fwd_em_route_array[1];
-			entry.key.ip_dst = IPv4(201, c, b, a);
+			entry.key.ip_dst = IPv4(3, c, b, a);
 			break;
 		case 2:
 			entry = ipv4_l3fwd_em_route_array[2];

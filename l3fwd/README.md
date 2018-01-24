@@ -41,3 +41,11 @@ That's still 20 `X`'s, but one of them is now where the subnet flip is
 Pktgen command:
 
 `sudo ./app/x86_64-native-linuxapp-gcc/pktgen -l 1,2,3,4,5 -n 4 --proc-type auto --file-prefix pg -- -N -T -P --crc-strip -m "[2:3].0" -m "[4:5].1" -f themes/black-yellow2.theme`
+
+In pktgen:
+set 0 type ipv4
+set 0 proto udp
+set 0 src ip 7.7.7.7/24
+set 0 dst ip 1.0.0.0
+set 0 sport 7777
+set 0 dport 8888

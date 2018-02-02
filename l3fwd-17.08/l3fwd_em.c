@@ -284,7 +284,7 @@ static inline uint8_t
 em_get_ipv4_dst_port(void *ipv4_hdr, uint8_t portid, void *lookup_struct)
 {
 	int ret = 0;
-	void *bkt_ptr;
+	// void *bkt_ptr;
 	union ipv4_5tuple_host key;
 	struct rte_hash *ipv4_l3fwd_lookup_struct =
 		(struct rte_hash *)lookup_struct;
@@ -298,7 +298,8 @@ em_get_ipv4_dst_port(void *ipv4_hdr, uint8_t portid, void *lookup_struct)
 	key.xmm = em_mask_key(ipv4_hdr, mask0.x);
 
 	/* Find destination port */
-	ret = rte_hash_lookup_get_bkt(ipv4_l3fwd_lookup_struct, (const void *)&key, &bkt_ptr);
+	// ret = rte_hash_lookup_get_bkt(ipv4_l3fwd_lookup_struct, (const void *)&key, &bkt_ptr);
+	ret = rte_hash_lookup(ipv4_l3fwd_lookup_struct, (const void *)&key);
 	return (uint8_t)((ret < 0) ? portid : ipv4_l3fwd_out_if[ret]);
 }
 

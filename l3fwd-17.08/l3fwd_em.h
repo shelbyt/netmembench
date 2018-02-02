@@ -63,6 +63,11 @@ l3fwd_em_simple_forward(struct rte_mbuf *m, uint8_t portid,
 		dst_port = em_get_ipv4_dst_port(ipv4_hdr, portid,
 						qconf->ipv4_lookup_struct);
 
+		// HACK: THIS CAN CAUSE SEGFAULTS
+		// Just write the d_addr before correcting the outgoing port;
+		// This will allow sending to two destinations via the same output port.
+		// *(uint64_t *)&eth_hdr->d_addr = dest_eth_addr[dst_port];
+
 		if (dst_port >= RTE_MAX_ETHPORTS ||
 			(enabled_port_mask & 1 << dst_port) == 0)
 			dst_port = portid;

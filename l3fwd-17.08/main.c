@@ -77,6 +77,7 @@
 #include <cmdline_parse_etheraddr.h>
 
 #include "l3fwd.h"
+#include "utils.h"
 
 /*
  * Configurable number of RX/TX ring descriptors
@@ -160,7 +161,7 @@ static struct rte_eth_conf port_conf = {
 	.rx_adv_conf = {
 		.rss_conf = {
 			.rss_key = NULL,
-			.rss_hf = ETH_RSS_IP,
+			.rss_hf = ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP | ETH_RSS_SCTP,
 		},
 	},
 	.txmode = {
@@ -1053,6 +1054,62 @@ main(int argc, char **argv)
 	ret = 0;
 	/* launch per-lcore init on every lcore */
 	rte_eal_mp_remote_launch(l3fwd_lkp.main_loop, NULL, CALL_MASTER);
+
+#ifdef EXP_WRITE_PORT_STATS
+	if (nb_ports == 2) {
+		FILE *fp_t;
+		uint64_t start_time, now, last, delta;
+		uint64_t last_ipackets_0, last_ipackets_1, last_imissed_0, last_imissed_1;
+		struct rte_eth_stats stats0, stats1;
+
+		fp_t = fopen("/tmp/pktgen_loss.out", "w");
+
+		if (fp_t == NULL){
+			rte_exit(EXIT_FAILURE, "Failed to open stats files\n");
+		}
+
+		rte_eth_stats_get(0, &stats0);
+		rte_eth_stats_get(1, &stats1);
+
+		last_ipackets_0 = stats0.ipackets;
+		last_ipackets_1 = stats1.ipackets;
+		last_imissed_0 = stats0.imissed;
+		last_imissed_1 = stats1.imissed;
+
+		printf("\nWriting data to /tmp/pktgen_loss.out... press Ctrl+C to stop.\n");
+
+		start_time = get_time_ns();
+		now = start_time;
+		last = now;
+		while(!force_quit) {
+			now = get_time_ns();
+			delta = now - last;
+
+			if (delta >= 100000) {
+				rte_eth_stats_get(0, &stats0);
+				rte_eth_stats_get(1, &stats1);
+
+				fprintf(fp_t, "%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n",
+						now - start_time, delta,
+						stats0.ipackets - last_ipackets_0,
+						stats0.imissed - last_imissed_0,
+						stats1.ipackets - last_ipackets_1,
+						stats1.imissed - last_imissed_1,
+						(stats0.ipackets + stats1.ipackets) - (last_ipackets_0 + last_ipackets_1),
+						(stats0.imissed + stats1.imissed) - (last_imissed_0 + last_imissed_1));
+
+				last_ipackets_0 = stats0.ipackets;
+				last_ipackets_1 = stats1.ipackets;
+				last_imissed_0 = stats0.imissed;
+				last_imissed_1 = stats1.imissed;
+
+				last = now;
+			}
+		}
+		fclose(fp_t);
+	}
+#endif
+
 	RTE_LCORE_FOREACH_SLAVE(lcore_id) {
 		if (rte_eal_wait_lcore(lcore_id) < 0) {
 			ret = -1;

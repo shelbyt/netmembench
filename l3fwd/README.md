@@ -52,6 +52,8 @@ set 0 dport 8888
 
 
 
+======================
+### OLD EXPERIMENT, IGNORE
 
 Setting up rate experiment:
 
@@ -80,8 +82,8 @@ set 1 dport 8888
 enable 0 random
 enable 1 random
 
-`set 0 rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX`
-`set 1 rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX`
+set 0 rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX
+set 1 rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX
 ^ for 2^16 entries
 
 Installing LUA lib:
@@ -93,3 +95,46 @@ Running the LUA script:
 lua 'f, e = loadfile("scripts/drop_rate.lua"); f();'
 
 files are in /tmp/pktgen_loss_pX.out where X is the port ID (0 or 1)
+
+## CEASE IGNORE
+======================
+Setting up rate experiment:
+
+compiling l3fwd:
+`USER_FLAGS+=-DEXP_WRITE_PORT_STATS make`
+
+Running l3fwd on 17:
+`sudo ./build/l3fwd -l 3,5,7,9,11 -n 4 -w 81:00.0 -w 81:00.1 -- -p 0x3 -E --config "(0,0,5),(0,1,7),(1,0,9),(1,1,11)" --parse-ptype --hash-entry-num 0x10000 --eth-dest=0,3c:fd:fe:a8:a4:50 --eth-dest=1,3c:fd:fe:a8:a4:51`
+^ the MAC addrs need to match the appropriate ports on the client machine
+
+Running pktgen on 15:
+`sudo ./app/x86_64-native-linuxapp-gcc/pktgen -l 3,5,7,9,11,13,15,17,19 -n 4 --proc-type auto --file-prefix pg -w 81:00.0 -w 81:00.1 -- -N -T --crc-strip -m "[5:7].0, [9:11].0, [13:15].1, [17:19].1" -f themes/white-black.theme`
+^ promisc flag is gone
+
+set 0 type ipv4
+set 0 proto udp
+set 0 src ip 7.7.7.7/24
+set 0 dst ip 3.0.0.0
+set 0 sport 7777
+set 0 dport 8888
+set 0 dst mac 3C:FD:FE:A5:C2:C8
+set 0 size 192
+
+set 1 type ipv4
+set 1 proto udp
+set 1 src ip 7.7.7.7/24
+set 1 dst ip 1.0.0.0
+set 1 sport 7777
+set 1 dport 8888
+set 1 dst mac 3C:FD:FE:A5:C2:C9
+set 1 size 192
+
+set all rate 50
+
+enable all random
+set all rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX
+
+^ for 2^16 entries
+
+file is /tmp/pktgen_loss.out
+format is time_since_start,delta_since_last,delta_recv_0,delta_missed_0,delta_recv_1,delta_missed_1,delta_recv_total,delta_missed_total

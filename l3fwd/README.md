@@ -49,3 +49,47 @@ set 0 src ip 7.7.7.7/24
 set 0 dst ip 1.0.0.0
 set 0 sport 7777
 set 0 dport 8888
+
+
+
+
+Setting up rate experiment:
+
+Running l3fwd:
+`sudo ./build/l3fwd -l 3,5,7,9,11,13,15,17,19 -n 4 -w 81:00.0 -w 81:00.1 -- -p 0x3 -P -E --config "(0,0,5),(0,1,7),(0,2,9),(0,3,11),(1,0,13),(1,1,15),(1,2,17),(1,3,19)" --parse-ptype --hash-entry-num 0x10000 --eth-dest=0,3c:fd:fe:a5:c2:c8 --eth-dest=1,3c:fd:fe:a5:c2:c9`
+^ the MAC addrs need to match the appropriate ports on the client machine
+
+Running pktgen:
+`sudo ./app/x86_64-native-linuxapp-gcc/pktgen -l 3,5,7,9,11,13,15,17,19 -n 4 --proc-type auto --file-prefix pg -w 81:00.0 -w 81:00.1 -- -N -T --crc-strip -m "[5:7].0, [9:11].0, [13:15].1, [17:19].1" -f themes/black-yellow.theme`
+^ promisc flag is gone
+
+set 0 type ipv4
+set 0 proto udp
+set 0 src ip 7.7.7.7/24
+set 0 dst ip 1.0.0.0
+set 0 sport 7777
+set 0 dport 8888
+
+set 1 type ipv4
+set 1 proto udp
+set 1 src ip 7.7.7.7/24
+set 1 dst ip 3.0.0.0
+set 1 sport 7777
+set 1 dport 8888
+
+enable 0 random
+enable 1 random
+
+`set 0 rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX`
+`set 1 rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX`
+^ for 2^16 entries
+
+Installing LUA lib:
+sudo apt install lua-socket
+sudo ln -s /usr/lib/x86_64-linux-gnu/lua /usr/local/lib/lua
+sudo ln -s /usr/share/lua/ /usr/local/share/lua
+
+Running the LUA script:
+lua 'f, e = loadfile("scripts/drop_rate.lua"); f();'
+
+files are in /tmp/pktgen_loss_pX.out where X is the port ID (0 or 1)

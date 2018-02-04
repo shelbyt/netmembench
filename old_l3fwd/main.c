@@ -52,6 +52,7 @@
 #include <rte_memcpy.h>
 #include <rte_memzone.h>
 #include <rte_eal.h>
+#include <rte_per_lcore.h>
 #include <rte_launch.h>
 #include <rte_atomic.h>
 #include <rte_cycles.h>
@@ -77,7 +78,6 @@
 #include <cmdline_parse_etheraddr.h>
 
 #include "l3fwd.h"
-#include "utils.h"
 
 /*
  * Configurable number of RX/TX ring descriptors
@@ -156,12 +156,12 @@ static struct rte_eth_conf port_conf = {
 		.hw_ip_checksum = 1, /**< IP checksum offload enabled */
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
 		.jumbo_frame    = 0, /**< Jumbo Frame Support disabled */
-		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
+		.hw_strip_crc   = 0, /**< CRC stripped by hardware */
 	},
 	.rx_adv_conf = {
 		.rss_conf = {
 			.rss_key = NULL,
-			.rss_hf = ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP | ETH_RSS_SCTP,
+			.rss_hf = ETH_RSS_IP,
 		},
 	},
 	.txmode = {
@@ -471,15 +471,22 @@ parse_eth_dest(const char *optarg)
 	*(uint64_t *)(val_eth + portid) = dest_eth_addr[portid];
 }
 
+static int
+parse_table_size(const char *optarg)
+{
+	int table_size = strtol(optarg, NULL, 10);
+	if(table_size <= 0) {
+		rte_exit(EXIT_FAILURE,
+				 "Invalid table size: %s\n",
+				 optarg);
+	}
+	lpm_ipv4_table_size_dynamic = table_size;
+	// em_ipv4_table_size_dynamic = table_size;
+	return table_size;
+}
+
 #define MAX_JUMBO_PKT_LEN  9600
 #define MEMPOOL_CACHE_SIZE 256
-
-static const char short_options[] =
-	"p:"  /* portmask */
-	"P"   /* promiscuous */
-	"L"   /* enable long prefix match */
-	"E"   /* enable exact match */
-	;
 
 #define CMD_LINE_OPT_CONFIG "config"
 #define CMD_LINE_OPT_ETH_DEST "eth-dest"
@@ -488,31 +495,7 @@ static const char short_options[] =
 #define CMD_LINE_OPT_ENABLE_JUMBO "enable-jumbo"
 #define CMD_LINE_OPT_HASH_ENTRY_NUM "hash-entry-num"
 #define CMD_LINE_OPT_PARSE_PTYPE "parse-ptype"
-enum {
-	/* long options mapped to a short option */
-
-	/* first long only option value must be >= 256, so that we won't
-	 * conflict with short options */
-	CMD_LINE_OPT_MIN_NUM = 256,
-	CMD_LINE_OPT_CONFIG_NUM,
-	CMD_LINE_OPT_ETH_DEST_NUM,
-	CMD_LINE_OPT_NO_NUMA_NUM,
-	CMD_LINE_OPT_IPV6_NUM,
-	CMD_LINE_OPT_ENABLE_JUMBO_NUM,
-	CMD_LINE_OPT_HASH_ENTRY_NUM_NUM,
-	CMD_LINE_OPT_PARSE_PTYPE_NUM,
-};
-
-static const struct option lgopts[] = {
-	{CMD_LINE_OPT_CONFIG, 1, 0, CMD_LINE_OPT_CONFIG_NUM},
-	{CMD_LINE_OPT_ETH_DEST, 1, 0, CMD_LINE_OPT_ETH_DEST_NUM},
-	{CMD_LINE_OPT_NO_NUMA, 0, 0, CMD_LINE_OPT_NO_NUMA_NUM},
-	{CMD_LINE_OPT_IPV6, 0, 0, CMD_LINE_OPT_IPV6_NUM},
-	{CMD_LINE_OPT_ENABLE_JUMBO, 0, 0, CMD_LINE_OPT_ENABLE_JUMBO_NUM},
-	{CMD_LINE_OPT_HASH_ENTRY_NUM, 1, 0, CMD_LINE_OPT_HASH_ENTRY_NUM_NUM},
-	{CMD_LINE_OPT_PARSE_PTYPE, 0, 0, CMD_LINE_OPT_PARSE_PTYPE_NUM},
-	{NULL, 0, 0, 0}
-};
+#define CMD_LINE_OPT_TABLE_SIZE "table-size"
 
 /*
  * This expression is used to calculate the number of mbufs needed
@@ -522,10 +505,10 @@ static const struct option lgopts[] = {
  * value of 8192
  */
 #define NB_MBUF RTE_MAX(	\
-	(nb_ports*nb_rx_queue*nb_rxd +		\
-	nb_ports*nb_lcores*MAX_PKT_BURST +	\
-	nb_ports*n_tx_queue*nb_txd +		\
-	nb_lcores*MEMPOOL_CACHE_SIZE),		\
+	(nb_ports*nb_rx_queue*RTE_TEST_RX_DESC_DEFAULT +	\
+	nb_ports*nb_lcores*MAX_PKT_BURST +			\
+	nb_ports*n_tx_queue*RTE_TEST_TX_DESC_DEFAULT +		\
+	nb_lcores*MEMPOOL_CACHE_SIZE),				\
 	(unsigned)8192)
 
 /* Parse the argument given in the command line of the application */
@@ -536,6 +519,17 @@ parse_args(int argc, char **argv)
 	char **argvopt;
 	int option_index;
 	char *prgname = argv[0];
+	static struct option lgopts[] = {
+		{CMD_LINE_OPT_CONFIG, 1, 0, 0},
+		{CMD_LINE_OPT_ETH_DEST, 1, 0, 0},
+		{CMD_LINE_OPT_NO_NUMA, 0, 0, 0},
+		{CMD_LINE_OPT_IPV6, 0, 0, 0},
+		{CMD_LINE_OPT_ENABLE_JUMBO, 0, 0, 0},
+		{CMD_LINE_OPT_HASH_ENTRY_NUM, 1, 0, 0},
+		{CMD_LINE_OPT_PARSE_PTYPE, 0, 0, 0},
+		{CMD_LINE_OPT_TABLE_SIZE, 1, 0, 0},
+		{NULL, 0, 0, 0}
+	};
 
 	argvopt = argv;
 
@@ -555,8 +549,9 @@ parse_args(int argc, char **argv)
 	const char *str12 =
 		"L3FWD: LPM and EM are mutually exclusive, select only one";
 	const char *str13 = "L3FWD: LPM or EM none selected, default LPM on";
+	const char *str14 = "L3FWD: LPM table size set to ";
 
-	while ((opt = getopt_long(argc, argvopt, short_options,
+	while ((opt = getopt_long(argc, argvopt, "p:PLE",
 				lgopts, &option_index)) != EOF) {
 
 		switch (opt) {
@@ -569,7 +564,6 @@ parse_args(int argc, char **argv)
 				return -1;
 			}
 			break;
-
 		case 'P':
 			printf("%s\n", str2);
 			promiscuous_on = 1;
@@ -586,71 +580,96 @@ parse_args(int argc, char **argv)
 			break;
 
 		/* long options */
-		case CMD_LINE_OPT_CONFIG_NUM:
-			ret = parse_config(optarg);
-			if (ret) {
-				printf("%s\n", str5);
-				print_usage(prgname);
-				return -1;
-			}
-			break;
+		case 0:
+			if (!strncmp(lgopts[option_index].name,
+					CMD_LINE_OPT_CONFIG,
+					sizeof(CMD_LINE_OPT_CONFIG))) {
 
-		case CMD_LINE_OPT_ETH_DEST_NUM:
-			parse_eth_dest(optarg);
-			break;
-
-		case CMD_LINE_OPT_NO_NUMA_NUM:
-			printf("%s\n", str6);
-			numa_on = 0;
-			break;
-
-		case CMD_LINE_OPT_IPV6_NUM:
-			printf("%sn", str7);
-			ipv6 = 1;
-			break;
-
-		case CMD_LINE_OPT_ENABLE_JUMBO_NUM: {
-			struct option lenopts = {
-				"max-pkt-len", required_argument, 0, 0
-			};
-
-			printf("%s\n", str8);
-			port_conf.rxmode.jumbo_frame = 1;
-
-			/*
-			 * if no max-pkt-len set, use the default
-			 * value ETHER_MAX_LEN.
-			 */
-			if (getopt_long(argc, argvopt, "",
-					&lenopts, &option_index) == 0) {
-				ret = parse_max_pkt_len(optarg);
-				if ((ret < 64) ||
-					(ret > MAX_JUMBO_PKT_LEN)) {
-					printf("%s\n", str9);
+				ret = parse_config(optarg);
+				if (ret) {
+					printf("%s\n", str5);
 					print_usage(prgname);
 					return -1;
 				}
-				port_conf.rxmode.max_rx_pkt_len = ret;
 			}
-			printf("%s %u\n", str10,
+
+			if (!strncmp(lgopts[option_index].name,
+					CMD_LINE_OPT_ETH_DEST,
+					sizeof(CMD_LINE_OPT_ETH_DEST))) {
+					parse_eth_dest(optarg);
+			}
+
+			if (!strncmp(lgopts[option_index].name,
+					CMD_LINE_OPT_NO_NUMA,
+					sizeof(CMD_LINE_OPT_NO_NUMA))) {
+				printf("%s\n", str6);
+				numa_on = 0;
+			}
+
+			if (!strncmp(lgopts[option_index].name,
+				CMD_LINE_OPT_IPV6,
+				sizeof(CMD_LINE_OPT_IPV6))) {
+				printf("%sn", str7);
+				ipv6 = 1;
+			}
+
+			if (!strncmp(lgopts[option_index].name,
+					CMD_LINE_OPT_ENABLE_JUMBO,
+					sizeof(CMD_LINE_OPT_ENABLE_JUMBO))) {
+				struct option lenopts = {
+					"max-pkt-len", required_argument, 0, 0
+				};
+
+				printf("%s\n", str8);
+				port_conf.rxmode.jumbo_frame = 1;
+
+				/*
+				 * if no max-pkt-len set, use the default
+				 * value ETHER_MAX_LEN.
+				 */
+				if (0 == getopt_long(argc, argvopt, "",
+						&lenopts, &option_index)) {
+					ret = parse_max_pkt_len(optarg);
+					if ((ret < 64) ||
+						(ret > MAX_JUMBO_PKT_LEN)) {
+						printf("%s\n", str9);
+						print_usage(prgname);
+						return -1;
+					}
+					port_conf.rxmode.max_rx_pkt_len = ret;
+				}
+				printf("%s %u\n", str10,
 				(unsigned int)port_conf.rxmode.max_rx_pkt_len);
-			break;
-		}
-
-		case CMD_LINE_OPT_HASH_ENTRY_NUM_NUM:
-			ret = parse_hash_entry_number(optarg);
-			if ((ret > 0) && (ret <= L3FWD_HASH_ENTRIES)) {
-				hash_entry_number = ret;
-			} else {
-				printf("%s\n", str11);
-				print_usage(prgname);
-				return -1;
 			}
-			break;
 
-		case CMD_LINE_OPT_PARSE_PTYPE_NUM:
-			printf("soft parse-ptype is enabled\n");
-			parse_ptype = 1;
+			if (!strncmp(lgopts[option_index].name,
+				CMD_LINE_OPT_HASH_ENTRY_NUM,
+				sizeof(CMD_LINE_OPT_HASH_ENTRY_NUM))) {
+
+				ret = parse_hash_entry_number(optarg);
+				if ((ret > 0) && (ret <= L3FWD_HASH_ENTRIES)) {
+					hash_entry_number = ret;
+				} else {
+					printf("%s\n", str11);
+					print_usage(prgname);
+					return -1;
+				}
+			}
+
+			if (!strncmp(lgopts[option_index].name,
+				     CMD_LINE_OPT_PARSE_PTYPE,
+				     sizeof(CMD_LINE_OPT_PARSE_PTYPE))) {
+				printf("soft parse-ptype is enabled\n");
+				parse_ptype = 1;
+			}
+
+			if (!strncmp(lgopts[option_index].name,
+					CMD_LINE_OPT_TABLE_SIZE,
+					sizeof(CMD_LINE_OPT_TABLE_SIZE))) {
+				int table_size = parse_table_size(optarg);
+				printf("%s%d\n", str14, table_size);
+			}
+
 			break;
 
 		default:
@@ -688,7 +707,7 @@ parse_args(int argc, char **argv)
 		argv[optind-1] = prgname;
 
 	ret = optind-1;
-	optind = 1; /* reset getopt lib */
+	optind = 0; /* reset getopt lib */
 	return ret;
 }
 
@@ -918,13 +937,6 @@ main(int argc, char **argv)
 				"Cannot configure device: err=%d, port=%d\n",
 				ret, portid);
 
-		ret = rte_eth_dev_adjust_nb_rx_tx_desc(portid, &nb_rxd,
-						       &nb_txd);
-		if (ret < 0)
-			rte_exit(EXIT_FAILURE,
-				 "Cannot adjust number of descriptors: err=%d, "
-				 "port=%d\n", ret, portid);
-
 		rte_eth_macaddr_get(portid, &ports_eth_addr[portid]);
 		print_ethaddr(" Address:", &ports_eth_addr[portid]);
 		printf(", ");
@@ -1054,62 +1066,6 @@ main(int argc, char **argv)
 	ret = 0;
 	/* launch per-lcore init on every lcore */
 	rte_eal_mp_remote_launch(l3fwd_lkp.main_loop, NULL, CALL_MASTER);
-
-#ifdef EXP_WRITE_PORT_STATS
-	if (nb_ports == 2) {
-		FILE *fp_t;
-		uint64_t start_time, now, last, delta;
-		uint64_t last_ipackets_0, last_ipackets_1, last_imissed_0, last_imissed_1;
-		struct rte_eth_stats stats0, stats1;
-
-		fp_t = fopen("/tmp/pktgen_loss.out", "w");
-
-		if (fp_t == NULL){
-			rte_exit(EXIT_FAILURE, "Failed to open stats files\n");
-		}
-
-		rte_eth_stats_get(0, &stats0);
-		rte_eth_stats_get(1, &stats1);
-
-		last_ipackets_0 = stats0.ipackets;
-		last_ipackets_1 = stats1.ipackets;
-		last_imissed_0 = stats0.imissed;
-		last_imissed_1 = stats1.imissed;
-
-		printf("\nWriting data to /tmp/pktgen_loss.out... press Ctrl+C to stop.\n");
-
-		start_time = get_time_ns();
-		now = start_time;
-		last = now;
-		while(!force_quit) {
-			now = get_time_ns();
-			delta = now - last;
-
-			if (delta >= 100000) {
-				rte_eth_stats_get(0, &stats0);
-				rte_eth_stats_get(1, &stats1);
-
-				fprintf(fp_t, "%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n",
-						now - start_time, delta,
-						stats0.ipackets - last_ipackets_0,
-						stats0.imissed - last_imissed_0,
-						stats1.ipackets - last_ipackets_1,
-						stats1.imissed - last_imissed_1,
-						(stats0.ipackets + stats1.ipackets) - (last_ipackets_0 + last_ipackets_1),
-						(stats0.imissed + stats1.imissed) - (last_imissed_0 + last_imissed_1));
-
-				last_ipackets_0 = stats0.ipackets;
-				last_ipackets_1 = stats1.ipackets;
-				last_imissed_0 = stats0.imissed;
-				last_imissed_1 = stats1.imissed;
-
-				last = now;
-			}
-		}
-		fclose(fp_t);
-	}
-#endif
-
 	RTE_LCORE_FOREACH_SLAVE(lcore_id) {
 		if (rte_eal_wait_lcore(lcore_id) < 0) {
 			ret = -1;

@@ -31,24 +31,44 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __L3FWD_EM_H__
-#define __L3FWD_EM_H__
+#ifndef __L3FWD_LPM_H__
+#define __L3FWD_LPM_H__
 
-static __rte_always_inline void
-l3fwd_em_simple_forward(struct rte_mbuf *m, uint8_t portid,
+static inline uint8_t
+lpm_get_ipv4_dst_port(void *ipv4_hdr,  uint8_t portid, void *lookup_struct)
+{
+	uint32_t next_hop;
+	struct rte_lpm *ipv4_l3fwd_lookup_struct =
+		(struct rte_lpm *)lookup_struct;
+
+	return (uint8_t) ((rte_lpm_lookup(ipv4_l3fwd_lookup_struct,
+		rte_be_to_cpu_32(((struct ipv4_hdr *)ipv4_hdr)->dst_addr),
+		&next_hop) == 0) ? next_hop : portid);
+}
+
+static inline uint8_t
+lpm_get_ipv6_dst_port(void *ipv6_hdr,  uint8_t portid, void *lookup_struct)
+{
+	uint8_t next_hop;
+	struct rte_lpm6 *ipv6_l3fwd_lookup_struct =
+		(struct rte_lpm6 *)lookup_struct;
+
+	return (uint8_t) ((rte_lpm6_lookup(ipv6_l3fwd_lookup_struct,
+			((struct ipv6_hdr *)ipv6_hdr)->dst_addr,
+			&next_hop) == 0) ?  next_hop : portid);
+}
+
+static inline __attribute__((always_inline)) void
+l3fwd_lpm_simple_forward(struct rte_mbuf *m, uint8_t portid,
 		struct lcore_conf *qconf)
 {
 	struct ether_hdr *eth_hdr;
 	struct ipv4_hdr *ipv4_hdr;
 	uint8_t dst_port;
-	uint32_t tcp_or_udp;
-	uint32_t l3_ptypes;
 
 	eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
-	tcp_or_udp = m->packet_type & (RTE_PTYPE_L4_TCP | RTE_PTYPE_L4_UDP);
-	l3_ptypes = m->packet_type & RTE_PTYPE_L3_MASK;
 
-	if (tcp_or_udp && (l3_ptypes == RTE_PTYPE_L3_IPV4)) {
+	if (RTE_ETH_IS_IPV4_HDR(m->packet_type)) {
 		/* Handle IPv4 headers.*/
 		ipv4_hdr = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *,
 						   sizeof(struct ether_hdr));
@@ -60,13 +80,8 @@ l3fwd_em_simple_forward(struct rte_mbuf *m, uint8_t portid,
 			return;
 		}
 #endif
-		dst_port = em_get_ipv4_dst_port(ipv4_hdr, portid,
+		 dst_port = lpm_get_ipv4_dst_port(ipv4_hdr, portid,
 						qconf->ipv4_lookup_struct);
-
-		// HACK: THIS CAN CAUSE SEGFAULTS
-		// Just write the d_addr before correcting the outgoing port;
-		// This will allow sending to two destinations via the same output port.
-		// *(uint64_t *)&eth_hdr->d_addr = dest_eth_addr[dst_port];
 
 		if (dst_port >= RTE_MAX_ETHPORTS ||
 			(enabled_port_mask & 1 << dst_port) == 0)
@@ -84,14 +99,14 @@ l3fwd_em_simple_forward(struct rte_mbuf *m, uint8_t portid,
 		ether_addr_copy(&ports_eth_addr[dst_port], &eth_hdr->s_addr);
 
 		send_single_packet(qconf, m, dst_port);
-	} else if (tcp_or_udp && (l3_ptypes == RTE_PTYPE_L3_IPV6)) {
+	} else if (RTE_ETH_IS_IPV6_HDR(m->packet_type)) {
 		/* Handle IPv6 headers.*/
 		struct ipv6_hdr *ipv6_hdr;
 
 		ipv6_hdr = rte_pktmbuf_mtod_offset(m, struct ipv6_hdr *,
 						   sizeof(struct ether_hdr));
 
-		dst_port = em_get_ipv6_dst_port(ipv6_hdr, portid,
+		dst_port = lpm_get_ipv6_dst_port(ipv6_hdr, portid,
 					qconf->ipv6_lookup_struct);
 
 		if (dst_port >= RTE_MAX_ETHPORTS ||
@@ -111,13 +126,9 @@ l3fwd_em_simple_forward(struct rte_mbuf *m, uint8_t portid,
 	}
 }
 
-/*
- * Buffer non-optimized handling of packets, invoked
- * from main_loop.
- */
 static inline void
-l3fwd_em_no_opt_send_packets(int nb_rx, struct rte_mbuf **pkts_burst,
-			uint8_t portid, struct lcore_conf *qconf)
+l3fwd_lpm_no_opt_send_packets(int nb_rx, struct rte_mbuf **pkts_burst,
+				uint8_t portid, struct lcore_conf *qconf)
 {
 	int32_t j;
 
@@ -125,19 +136,16 @@ l3fwd_em_no_opt_send_packets(int nb_rx, struct rte_mbuf **pkts_burst,
 	for (j = 0; j < PREFETCH_OFFSET && j < nb_rx; j++)
 		rte_prefetch0(rte_pktmbuf_mtod(pkts_burst[j], void *));
 
-	/*
-	 * Prefetch and forward already prefetched
-	 * packets.
-	 */
+	/* Prefetch and forward already prefetched packets. */
 	for (j = 0; j < (nb_rx - PREFETCH_OFFSET); j++) {
 		rte_prefetch0(rte_pktmbuf_mtod(pkts_burst[
 				j + PREFETCH_OFFSET], void *));
-		l3fwd_em_simple_forward(pkts_burst[j], portid, qconf);
+		l3fwd_lpm_simple_forward(pkts_burst[j], portid, qconf);
 	}
 
 	/* Forward remaining prefetched packets */
 	for (; j < nb_rx; j++)
-		l3fwd_em_simple_forward(pkts_burst[j], portid, qconf);
+		l3fwd_lpm_simple_forward(pkts_burst[j], portid, qconf);
 }
 
-#endif /* __L3FWD_EM_H__ */
+#endif /* __L3FWD_LPM_H__ */

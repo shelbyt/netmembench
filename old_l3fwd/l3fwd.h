@@ -107,6 +107,9 @@ extern struct ether_addr ports_eth_addr[RTE_MAX_ETHPORTS];
 /* mask of enabled ports */
 extern uint32_t enabled_port_mask;
 
+extern int lpm_ipv4_table_size_dynamic;
+// extern int em_ipv4_table_size_dynamic;
+
 /* Used only in exact match mode. */
 extern int ipv6; /**< ipv6 is false by default. */
 extern uint32_t hash_entry_number;
@@ -224,6 +227,9 @@ em_main_loop(__attribute__((unused)) void *dummy);
 
 int
 lpm_main_loop(__attribute__((unused)) void *dummy);
+
+int
+lpm_setup_dynamic_ipv4(const unsigned int num_entries);
 
 /* Return ipv4/ipv6 fwd lookup struct for LPM or EM. */
 void *

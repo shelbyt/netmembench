@@ -57,7 +57,7 @@
 
 #include "l3fwd.h"
 
-#if defined(RTE_ARCH_X86) || defined(RTE_MACHINE_CPUFLAG_CRC32)
+#if defined(RTE_MACHINE_CPUFLAG_SSE4_2) || defined(RTE_MACHINE_CPUFLAG_CRC32)
 #define EM_HASH_CRC 1
 #endif
 
@@ -128,18 +128,27 @@ struct ipv6_l3fwd_em_route {
 	uint8_t if_out;
 };
 
-//static struct ipv4_l3fwd_em_route ipv4_l3fwd_em_route_array[] = {
-//	{{IPv4(101, 0, 0, 0), IPv4(100, 10, 0, 1),  101, 11, IPPROTO_TCP}, 0},
-//	{{IPv4(201, 0, 0, 0), IPv4(200, 20, 0, 1),  102, 12, IPPROTO_TCP}, 1},
-//	{{IPv4(111, 0, 0, 0), IPv4(100, 30, 0, 1),  101, 11, IPPROTO_TCP}, 2},
-//	{{IPv4(211, 0, 0, 0), IPv4(200, 40, 0, 1),  102, 12, IPPROTO_TCP}, 3},
-//};
+// static struct ipv4_l3fwd_em_route ipv4_l3fwd_em_route_array[] = {
+// 	{{IPv4(101, 0, 0, 0), IPv4(100, 10, 0, 1),  101, 11, IPPROTO_TCP}, 0},
+// 	{{IPv4(201, 0, 0, 0), IPv4(200, 20, 0, 1),  102, 12, IPPROTO_TCP}, 1},
+// 	{{IPv4(111, 0, 0, 0), IPv4(100, 30, 0, 1),  101, 11, IPPROTO_TCP}, 2},
+// 	{{IPv4(211, 0, 0, 0), IPv4(200, 40, 0, 1),  102, 12, IPPROTO_TCP}, 3},
+// };
 static struct ipv4_l3fwd_em_route ipv4_l3fwd_em_route_array[] = {
 	{{IPv4(1, 0, 0, 0), IPv4(7, 7, 7, 7), 8888, 7777, IPPROTO_UDP}, 0},
 	{{IPv4(3, 0, 0, 0), IPv4(7, 7, 7, 7), 8888, 7777, IPPROTO_UDP}, 1},
 	{{IPv4(111, 0, 0, 0), IPv4(100, 30, 0, 1),  101, 11, IPPROTO_UDP}, 2},
 	{{IPv4(211, 0, 0, 0), IPv4(200, 40, 0, 1),  102, 12, IPPROTO_UDP}, 3},
 };
+// int em_ipv4_table_size_dynamic = -1;
+// static unsigned char ipv4_em_dynamic_default_subnet = 8;
+// static struct ipv4_5tuple ipv4_em_dynamic_default_tuple = {
+// 	.ip_dst = IPv4(ipv4_em_dynamic_default_subnet, 0, 0, 0),
+// 	.ip_src = IPv4(7, 7, 7, 7),
+// 	.port_dst = 8888,
+// 	.port_src = 7777,
+// 	.proto = IPPROTO_UDP,
+// };
 
 static struct ipv6_l3fwd_em_route ipv6_l3fwd_em_route_array[] = {
 	{{
@@ -252,7 +261,7 @@ static rte_xmm_t mask0;
 static rte_xmm_t mask1;
 static rte_xmm_t mask2;
 
-#if defined(RTE_MACHINE_CPUFLAG_SSE2)
+#if defined(__SSE2__)
 static inline xmm_t
 em_mask_key(void *key, xmm_t mask)
 {
@@ -284,7 +293,6 @@ static inline uint8_t
 em_get_ipv4_dst_port(void *ipv4_hdr, uint8_t portid, void *lookup_struct)
 {
 	int ret = 0;
-	// void *bkt_ptr;
 	union ipv4_5tuple_host key;
 	struct rte_hash *ipv4_l3fwd_lookup_struct =
 		(struct rte_hash *)lookup_struct;
@@ -298,7 +306,6 @@ em_get_ipv4_dst_port(void *ipv4_hdr, uint8_t portid, void *lookup_struct)
 	key.xmm = em_mask_key(ipv4_hdr, mask0.x);
 
 	/* Find destination port */
-	// ret = rte_hash_lookup_get_bkt(ipv4_l3fwd_lookup_struct, (const void *)&key, &bkt_ptr);
 	ret = rte_hash_lookup(ipv4_l3fwd_lookup_struct, (const void *)&key);
 	return (uint8_t)((ret < 0) ? portid : ipv4_l3fwd_out_if[ret]);
 }
@@ -336,11 +343,11 @@ em_get_ipv6_dst_port(void *ipv6_hdr,  uint8_t portid, void *lookup_struct)
 	return (uint8_t)((ret < 0) ? portid : ipv6_l3fwd_out_if[ret]);
 }
 
-#if defined RTE_ARCH_X86 || defined RTE_MACHINE_CPUFLAG_NEON
+#if defined(__SSE4_1__)
 #if defined(NO_HASH_MULTI_LOOKUP)
-#include "l3fwd_em_sequential.h"
+#include "l3fwd_em_sse.h"
 #else
-#include "l3fwd_em_hlm.h"
+#include "l3fwd_em_hlm_sse.h"
 #endif
 #else
 #include "l3fwd_em.h"
@@ -622,7 +629,7 @@ em_parse_ptype(struct rte_mbuf *m)
 				packet_type |= RTE_PTYPE_L4_UDP;
 		} else
 			packet_type |= RTE_PTYPE_L3_IPV4_EXT;
-	} else if (ether_type == rte_cpu_to_be_16(ETHER_TYPE_IPv6)) {
+	} else if (ether_type == rte_cpu_to_be_16(ETHER_TYPE_IPv4)) {
 		ipv6_hdr = (struct ipv6_hdr *)l3;
 		if (ipv6_hdr->proto == IPPROTO_TCP)
 			packet_type |= RTE_PTYPE_L3_IPV6 | RTE_PTYPE_L4_TCP;
@@ -717,13 +724,13 @@ em_main_loop(__attribute__((unused)) void *dummy)
 			if (nb_rx == 0)
 				continue;
 
-#if defined RTE_ARCH_X86 || defined RTE_MACHINE_CPUFLAG_NEON
+#if defined(__SSE4_1__)
 			l3fwd_em_send_packets(nb_rx, pkts_burst,
 							portid, qconf);
 #else
 			l3fwd_em_no_opt_send_packets(nb_rx, pkts_burst,
 							portid, qconf);
-#endif
+#endif /* __SSE_4_1__ */
 		}
 	}
 

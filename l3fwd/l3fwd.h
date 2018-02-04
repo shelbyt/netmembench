@@ -107,9 +107,6 @@ extern struct ether_addr ports_eth_addr[RTE_MAX_ETHPORTS];
 /* mask of enabled ports */
 extern uint32_t enabled_port_mask;
 
-extern int lpm_ipv4_table_size_dynamic;
-// extern int em_ipv4_table_size_dynamic;
-
 /* Used only in exact match mode. */
 extern int ipv6; /**< ipv6 is false by default. */
 extern uint32_t hash_entry_number;
@@ -117,6 +114,15 @@ extern uint32_t hash_entry_number;
 extern xmm_t val_eth[RTE_MAX_ETHPORTS];
 
 extern struct lcore_conf lcore_conf[RTE_MAX_LCORE];
+
+#ifdef EXP_MEM_ACCESS_IN_THREAD
+#ifndef EXP_MEM_ARR_SIZE
+#define EXP_MEM_ARR_SIZE 1024 * 1024 * 4
+#endif
+#define EXP_MEM_RANDOM_OFF 1023 * 7    // offset for each lcore ID
+#define EXP_MEM_STRIDE_SIZE 1001 * 15  // Needs to be not power of 2
+extern char* random_mem_array;
+#endif
 
 /* Send burst of packets on an output interface */
 static inline int
@@ -227,9 +233,6 @@ em_main_loop(__attribute__((unused)) void *dummy);
 
 int
 lpm_main_loop(__attribute__((unused)) void *dummy);
-
-int
-lpm_setup_dynamic_ipv4(const unsigned int num_entries);
 
 /* Return ipv4/ipv6 fwd lookup struct for LPM or EM. */
 void *

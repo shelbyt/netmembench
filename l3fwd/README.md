@@ -51,53 +51,7 @@ set 0 sport 7777
 set 0 dport 8888
 
 
-
-======================
-### OLD EXPERIMENT, IGNORE
-
-Setting up rate experiment:
-
-Running l3fwd:
-`sudo ./build/l3fwd -l 3,5,7,9,11,13,15,17,19 -n 4 -w 81:00.0 -w 81:00.1 -- -p 0x3 -P -E --config "(0,0,5),(0,1,7),(0,2,9),(0,3,11),(1,0,13),(1,1,15),(1,2,17),(1,3,19)" --parse-ptype --hash-entry-num 0x10000 --eth-dest=0,3c:fd:fe:a5:c2:c8 --eth-dest=1,3c:fd:fe:a5:c2:c9`
-^ the MAC addrs need to match the appropriate ports on the client machine
-
-Running pktgen:
-`sudo ./app/x86_64-native-linuxapp-gcc/pktgen -l 3,5,7,9,11,13,15,17,19 -n 4 --proc-type auto --file-prefix pg -w 81:00.0 -w 81:00.1 -- -N -T --crc-strip -m "[5:7].0, [9:11].0, [13:15].1, [17:19].1" -f themes/black-yellow.theme`
-^ promisc flag is gone
-
-set 0 type ipv4
-set 0 proto udp
-set 0 src ip 7.7.7.7/24
-set 0 dst ip 1.0.0.0
-set 0 sport 7777
-set 0 dport 8888
-
-set 1 type ipv4
-set 1 proto udp
-set 1 src ip 7.7.7.7/24
-set 1 dst ip 3.0.0.0
-set 1 sport 7777
-set 1 dport 8888
-
-enable 0 random
-enable 1 random
-
-set 0 rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX
-set 1 rnd 0 30 ........_........._.XXXXXXX_XXXXXXXX
-^ for 2^16 entries
-
-Installing LUA lib:
-sudo apt install lua-socket
-sudo ln -s /usr/lib/x86_64-linux-gnu/lua /usr/local/lib/lua
-sudo ln -s /usr/share/lua/ /usr/local/share/lua
-
-Running the LUA script:
-lua 'f, e = loadfile("scripts/drop_rate.lua"); f();'
-
-files are in /tmp/pktgen_loss_pX.out where X is the port ID (0 or 1)
-
-## CEASE IGNORE
-======================
+==========================
 Setting up rate experiment:
 
 compiling l3fwd:
@@ -151,3 +105,65 @@ There's a few `#define`s that set this up. The `make` command looks like this:
 There's two other defines in `l3fwd.h` that control initial offset per lcore and the stride size.
 
 You can combine that define with the one for stats dumping; they don't affect one another.
+
+
+
+
+===============
+RPC Experiments
+===============
+RPC requires BESS, a separate program installed on 15/17 as a different user, `rotor`.
+
+`ssh rotor@b09-15`
+`ssh rotor@b09-17`
+
+After logging in, there's a different DPDK library that needs to be used for BESS.
+`RTE_SDK` and `RTE_TARGET` are already set, so don't worry about those.
+The DPDK library is in `~/bess/deps/dpdk-17.11`.
+In order, do the following:
+
+1. Unbind the NICs from the IGB UIO driver.
+2. Insert the IGB UIO module (this will remove the old module as well).
+3. Map hugepages (this will unmap the old hugepages as well). 16 per NUMA domain.
+4. Bind the NICs to the IGB UIO driver.
+
+Next, go into `~/bess` and run `./bessctl/bessctl`.
+This is the central command line interface to control BESS.
+This allows you to run scripts that contain the setup for BESS to use.
+
+Once in this, you will either see `localhost:10514 $` or `<disconnected> $`.
+The former means `bessd` is already running, and you may want to `daemon stop` or `daemon reset` to get it to a clean state.
+The latter means the daemon is stopped, and you'll need to run the following:
+
+`daemon start -c 47`
+
+That'll start up the daemon on core 47 (NUMA domain 1).
+Next, we want to run the actual script that will execute the experiment.
+_You must run the server script first_ on `b09-17`.
+
+On b09-17: `run cacheproj_server`. *Wait for this to finish!*
+
+On b09-15: `run cacheproj_client`
+
+This should get the experiment running. BESS will send until you tell it to stop, but there's a couple ways to get statistics:
+
+`monitor port dev0` and `show port dev0` will query the port `dev0` (there's `dev1` as well).
+The former will print statistics for the last second about throughput and drops, and the latter will just print NIC stat counters.
+
+To get histogram data, run the following:
+
+`command module measure0 get_summary MeasureCommandGetSummaryArg {'latency_percentiles': [50.0, 90.0, 99.0]}`
+
+This will get the histogram summary for the module `measure0`. There's one measure module for each client (see below for more info).
+If you want to clear the histogram, add `'clear': True` to the dictionary at the end of the command.
+
+The scripts have a number of configurable options to set the number of clients, array size, number of memory lookups per packet, etc.
+These are all selected when the `run` command is entered, but will choose defaults if nothing is specified.
+The script will print all the variables you can set when you run it (with a warning saying it used the default).
+To set a variable, do something like this:
+
+`run cacheproj_server BESS_PKT_SIZE=192, BESS_NUM_SERVERS=6, BESS_NUM_UPDATES=4`
+
+That'll set up 6 servers (3 per port) with 4 updates from memory per packet, and a packet size of 192 bytes.
+There's some restrictions on the variables, but the script checks these for you to make sure nothing's wrong.
+_However, make sure `BESS_ARR_SIZE` is the same on both machines._ Also, it's good for it to be a power of 2.

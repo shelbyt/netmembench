@@ -16,9 +16,11 @@ rc('font',**{'family':'serif','serif':['Palatino']})
 rc('text', usetex=True)
 
 
+
 PACKETS_SENT=100000000
 
-sns.set_style("whitegrid")
+sns.set_style('whitegrid', {'legend.frameon':True})
+
 
 
 dir_prefix = './64_multicore/'
@@ -54,15 +56,16 @@ def stddev(data, ddof=0):
 
 for ffile in file_arr:
     fp = open(dir_prefix+ffile)
+    pkt_size=int(ffile.split('_')[0])
     mem_access=int(ffile.split('_')[1])
     cores = (ffile.split('_')[2])
-    if (mem_access,cores) not in pdict:
-        pdict[(mem_access,cores)] = []
+    if (mem_access,cores,pkt_size) not in pdict:
+        pdict[(mem_access,cores,pkt_size)] = []
     for i, line in enumerate(fp):
         #if i == 47:
         if line.startswith("ipackets="):
             packet_rate = 1-(float(line.split('=')[1].strip('\n'))/PACKETS_SENT)
-            pdict[(mem_access,cores)].append(packet_rate)
+            pdict[(mem_access,cores,pkt_size)].append(packet_rate)
     fp.close()
 
 
@@ -85,15 +88,15 @@ o_pdict = collections.OrderedDict(sorted(pdict.items()))
 
 ############Fonts#################
 SMALL_SIZE = 16
-MEDIUM_SIZE = 22
-BIGGER_SIZE = 32
+MEDIUM_SIZE = 35
+BIGGER_SIZE = 42 
 
-plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
+plt.rc('font', size=BIGGER_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
-plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
-plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+plt.rc('legend', fontsize=BIGGER_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 ##################################
 
@@ -106,18 +109,43 @@ fig,axes = plt.subplots(nrows=1, ncols=1,figsize=(20,15))
 #major_ticks=np.arange(0,1,20)
 #axes.set_yticks(major_ticks)
 
-for (mem,core) in o_pdict:
-    clist.append((mem, o_pdict[(mem,core)][0], core))
-    clist.append((mem, o_pdict[(mem,core)][1], core))
-    clist.append((mem, o_pdict[(mem,core)][2], core))
+for (mem,core,pkt_size) in o_pdict:
+    clist.append((mem, o_pdict[(mem,core,pkt_size)][0], core,pkt_size))
+    clist.append((mem, o_pdict[(mem,core,pkt_size)][1], core,pkt_size))
+    clist.append((mem, o_pdict[(mem,core,pkt_size)][2], core,pkt_size))
 
-df = pd.DataFrame(data=clist, columns=['mem access', 'PDR', 'Core'])
-sns.set_color_codes('muted')
-sns_plot = sns.barplot(x='mem access', y='PDR',hue='Core', data=df, color="b", capsize=.05)
+df = pd.DataFrame(data=clist, columns=['Number of Memory Accesses', 'Packet Drop Rate', 'Core', "Packet Size"])
+
+
+bars = axes.patches
+hatches = ''.join(h*len(df) for h in 'x/O.')
+
+for bar, hatch in zip(bars, hatches):
+        bar.set_hatch(hatch)
+
+
+
+sns.set_color_codes('dark')
+sns_plot = sns.barplot(x='Number of Memory Accesses', y='Packet Drop Rate',hue='Packet Size',palette="binary" , data=df, capsize=.05)
+
+
+
+
+
+
+
+# And a corresponding grid
+axes.grid(which='both')
+
+axes.grid(which='minor', alpha=0.2)
+axes.grid(which='major', alpha=0.5)
+
+
 
 
 fig = sns_plot.get_figure()
-fig.savefig("out.png")
+fig.savefig("100G-pdr-multi.png")
+fig.savefig("100G-pdr-multi.pdf")
 
 
 

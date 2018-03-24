@@ -77,8 +77,12 @@
 #include <cmdline_parse.h>
 #include <cmdline_parse_etheraddr.h>
 
+#include <pqos.h>
+#include "dlock.h"
+
 #include "l3fwd.h"
 #include "utils.h"
+
 
 /*
  * Configurable number of RX/TX ring descriptors
@@ -243,6 +247,73 @@ check_lcore_params(void)
 	}
 	return 0;
 }
+
+
+#ifdef EXP_MEM_LOCK
+static int init_pqos(void)
+{
+        const struct pqos_cpuinfo *p_cpu = NULL;
+        const struct pqos_cap *p_cap = NULL;
+    struct pqos_config cfg;
+        int ret;
+
+    memset(&cfg, 0, sizeof(cfg));
+        cfg.fd_log = STDOUT_FILENO;
+        cfg.verbose = 0;
+    ret = pqos_init(&cfg);
+    if (ret != PQOS_RETVAL_OK) {
+        printf("Error initializing PQoS library!\n");
+        return -1;
+    }
+
+    /* Get CMT capability and CPU info pointer */
+    ret = pqos_cap_get(&p_cap, &p_cpu);
+    if (ret != PQOS_RETVAL_OK) {
+                pqos_fini();
+                printf("Error retrieving PQoS capabilities!\n");
+        return -1;
+    }
+
+        /* Reset CAT */
+    ret = pqos_alloc_reset(PQOS_REQUIRE_CDP_ANY);
+    if (ret != PQOS_RETVAL_OK) {
+                pqos_fini();
+        printf("Error resetting CAT!\n");
+        return -1;
+        }
+
+        return 0;
+}
+
+/**
+ * @brief Closes PQoS library
+ *
+ * @return Operation status
+ * @retval 0 OK
+ * @retval <0 error
+ */
+static int close_pqos(void)
+{
+        int ret_val = 0;
+
+    if (pqos_fini() != PQOS_RETVAL_OK) {
+        printf("Error shutting down PQoS library!\n");
+                ret_val = -1;
+        }
+
+        return ret_val;
+}
+#endif
+
+
+
+
+
+
+
+
+
+
 
 static int
 check_port_config(const unsigned nb_ports)
@@ -1056,12 +1127,30 @@ main(int argc, char **argv)
 	/* launch per-lcore init on every lcore */
 	rte_eal_mp_remote_launch(l3fwd_lkp.main_loop, NULL, CALL_MASTER);
 
+    //pqos_cpu_get_sockets(0, NULL);
 #ifdef EXP_MEM_ACCESS_IN_THREAD
 	random_mem_array = (char*)rte_zmalloc(NULL, (size_t)EXP_MEM_ARR_SIZE, 64);  // Cache aligned
 	if(random_mem_array == NULL) {
 		rte_exit(EXIT_FAILURE, "Failed to allocate random_mem_array\n");
 	}
+
+#ifdef EXP_MEM_LOCK
+
+    /* initialize PQoS and lock the data */
+    if (init_pqos() != 0) {
+        printf("ERROR: PQOS = 0");
+		rte_exit(EXIT_FAILURE, "PQOS FAIL\n");
+    }
+
+    /* lock the timer data */
+    if (dlock_init(random_mem_array,
+                   EXP_MEM_ARR_SIZE, 1 /* CLOS */, 19) != 0) {
+		rte_exit(EXIT_FAILURE, "PQOS FAIL ININIT \n");
+    }
 #endif
+#endif
+
+
 
 #ifdef EXP_WRITE_PORT_STATS
 	if (nb_ports == 2) {
@@ -1093,7 +1182,7 @@ main(int argc, char **argv)
 			now = get_time_ns();
 			delta = now - last;
 
-			if (delta >= 100000) {
+			if (delta >= 1000000000) {
 				rte_eth_stats_get(0, &stats0);
 				rte_eth_stats_get(1, &stats1);
 
@@ -1138,6 +1227,9 @@ main(int argc, char **argv)
 #ifdef EXP_MEM_ACCESS_IN_THREAD
 	if(random_mem_array != NULL)
 		rte_free(random_mem_array);
+#ifdef EXP_MEM_LOCK
+    close_pqos();
+#endif
 #endif
 
 	printf("Bye...\n");

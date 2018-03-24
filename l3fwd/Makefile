@@ -42,10 +42,23 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = l3fwd
 
 # all source are stored in SRCS-y
-SRCS-y := main.c l3fwd_lpm.c l3fwd_em.c
+SRCS-y := main.c l3fwd_lpm.c l3fwd_em.c PSEUDO_LOCK/dlock.c
+
+USER_FLAGS += -DEXP_WRITE_PORT_STATS  
+USER_FLAGS += -DEXP_MEM_ACCESS_IN_THREAD 
+USER_FLAGS += -DEXP_NUM_ACCESS_PER_FWD=1024
+USER_FLAGS += -DEXP_MEM_ARR_SIZE=4194304
+#USER_FLAGS += -DEXP_MEM_LOCK
+
+LIBDIR ?= /home/shelbyt/research/utils/17b-cat/lib/
+LDFLAGS += -L$(LIBDIR)
+LDLIBS  += -lpqos -lrt -lpthread
+CFLAGS  += -I$(LIBDIR) -I$(SRCDIR)/PSEUDO_LOCK
 
 CFLAGS += -I$(SRCDIR)
 CFLAGS += -O3 $(USER_FLAGS)
 CFLAGS += $(WERROR_FLAGS)
 
 include $(RTE_SDK)/mk/rte.extapp.mk
+
+#USER_FLAGS += -DEXP_MEM_ARR_SIZE=2097152

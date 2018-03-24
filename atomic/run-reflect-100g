@@ -1,0 +1,1 @@
+timeout -s SIGINT 30 perf stat -e  r81d0 -e r82d0 -e r20d1 -e r01d3 -e r41d0  ./build/app/reflect -c 0xaa -n 4 -w 81:00.0 

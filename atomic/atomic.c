@@ -48,6 +48,10 @@
 #include <rte_ring.h>
 #include <unistd.h>
 #include <signal.h>
+#include <rte_ip.h>
+
+#define MEM_ACCESS_PER_PACKET 32
+#define MEM_ACCESS_PER_PACKET 32
 
 #define MEM_ACCESS_PER_PACKET 32
 
@@ -62,7 +66,7 @@
 
 #define PORT_ID 0
 #define QUEUE_PER_CORE 5
-#define PKRQ_HWQ_IN_BURST 64
+#define PKRQ_HWQ_IN_BURST 32
 #define BURST_SIZE PKRQ_HWQ_IN_BURST
 #define MEM_ACESS_PER_BURST (BURST_SIZE * MEM_ACCESS_PER_PACKET)
 
@@ -114,25 +118,25 @@ static struct rte_eth_conf port_conf_default = {
 };
 
 volatile struct app_stats {
-        struct {
-                uint64_t rx_pkts;
-                uint64_t enqueue_pkts;
-                uint64_t enqueue_failed_pkts;
-        } rx __rte_cache_aligned;
-        struct {
-                uint64_t dequeue_pkts;
-                uint64_t enqueue_pkts;
-                uint64_t enqueue_failed_pkts;
-        } wkr __rte_cache_aligned;
-        struct {
-                uint64_t dequeue_pkts;
-                /* Too early pkts transmitted directly w/o reordering */
-                uint64_t early_pkts_txtd_woro;
-                /* Too early pkts failed from direct transmit */
-                uint64_t early_pkts_tx_failed_woro;
-                uint64_t ro_tx_pkts;
-                uint64_t ro_tx_failed_pkts;
-        } tx __rte_cache_aligned;
+    struct {
+        uint64_t rx_pkts;
+        uint64_t enqueue_pkts;
+        uint64_t enqueue_failed_pkts;
+    } rx __rte_cache_aligned;
+    struct {
+        uint64_t dequeue_pkts;
+        uint64_t enqueue_pkts;
+        uint64_t enqueue_failed_pkts;
+    } wkr __rte_cache_aligned;
+    struct {
+        uint64_t dequeue_pkts;
+        /* Too early pkts transmitted directly w/o reordering */
+        uint64_t early_pkts_txtd_woro;
+        /* Too early pkts failed from direct transmit */
+        uint64_t early_pkts_tx_failed_woro;
+        uint64_t ro_tx_pkts;
+        uint64_t ro_tx_failed_pkts;
+    } tx __rte_cache_aligned;
 } app_stats;
 
     static inline void __attribute__((always_inline))
@@ -143,44 +147,44 @@ rte_pktmbuf_free_bulk(struct rte_mbuf *m_list[], int16_t npkts)
 }
 
 
-static void
+    static void
 print_stats(void)
 {
-        const uint8_t nb_ports = rte_eth_dev_count();
-        unsigned i;
-        struct rte_eth_stats eth_stats;
-        printf("\nRX thread stats:\n");
-        printf(" - Pkts rxd:                            %"PRIu64"\n",
-                                                app_stats.rx.rx_pkts);
-        printf(" - Pkts enqd to workers ring:           %"PRIu64"\n",
-                                                app_stats.rx.enqueue_pkts);
-        printf("\nWorker thread stats:\n");
-        printf(" - Pkts deqd from workers ring:         %"PRIu64"\n",
-                                                app_stats.wkr.dequeue_pkts);
-        printf(" - Pkts enqd to tx ring:                %"PRIu64"\n",
-                                                app_stats.wkr.enqueue_pkts);
-        printf(" - Pkts enq to tx failed:               %"PRIu64"\n",
-                                                app_stats.wkr.enqueue_failed_pkts);
-        printf("\nTX stats:\n");
-        printf(" - Pkts deqd from tx ring:              %"PRIu64"\n",
-                                                app_stats.tx.dequeue_pkts);
-        printf(" - Ro Pkts transmitted:                 %"PRIu64"\n",
-                                                app_stats.tx.ro_tx_pkts);
-        printf(" - Ro Pkts tx failed:                   %"PRIu64"\n",
-                                                app_stats.tx.ro_tx_failed_pkts);
-        printf(" - Pkts transmitted w/o reorder:        %"PRIu64"\n",
-                                                app_stats.tx.early_pkts_txtd_woro);
-        printf(" - Pkts tx failed w/o reorder:          %"PRIu64"\n",
-                                                app_stats.tx.early_pkts_tx_failed_woro);
-        for (i = 0; i < nb_ports; i++) {
-                rte_eth_stats_get(i, &eth_stats);
-                printf("\nPort %u stats:\n", i);
-                printf(" - Pkts in:   %"PRIu64"\n", eth_stats.ipackets);
-                printf(" - Pkts out:  %"PRIu64"\n", eth_stats.opackets);
-                printf(" - In Errs:   %"PRIu64"\n", eth_stats.ierrors);
-                printf(" - Out Errs:  %"PRIu64"\n", eth_stats.oerrors);
-                printf(" - Mbuf Errs: %"PRIu64"\n", eth_stats.rx_nombuf);
-        }
+    const uint8_t nb_ports = rte_eth_dev_count();
+    unsigned i;
+    struct rte_eth_stats eth_stats;
+    printf("\nRX thread stats:\n");
+    printf(" - Pkts rxd:                            %"PRIu64"\n",
+            app_stats.rx.rx_pkts);
+    printf(" - Pkts enqd to workers ring:           %"PRIu64"\n",
+            app_stats.rx.enqueue_pkts);
+    printf("\nWorker thread stats:\n");
+    printf(" - Pkts deqd from workers ring:         %"PRIu64"\n",
+            app_stats.wkr.dequeue_pkts);
+    printf(" - Pkts enqd to tx ring:                %"PRIu64"\n",
+            app_stats.wkr.enqueue_pkts);
+    printf(" - Pkts enq to tx failed:               %"PRIu64"\n",
+            app_stats.wkr.enqueue_failed_pkts);
+    printf("\nTX stats:\n");
+    printf(" - Pkts deqd from tx ring:              %"PRIu64"\n",
+            app_stats.tx.dequeue_pkts);
+    printf(" - Ro Pkts transmitted:                 %"PRIu64"\n",
+            app_stats.tx.ro_tx_pkts);
+    printf(" - Ro Pkts tx failed:                   %"PRIu64"\n",
+            app_stats.tx.ro_tx_failed_pkts);
+    printf(" - Pkts transmitted w/o reorder:        %"PRIu64"\n",
+            app_stats.tx.early_pkts_txtd_woro);
+    printf(" - Pkts tx failed w/o reorder:          %"PRIu64"\n",
+            app_stats.tx.early_pkts_tx_failed_woro);
+    for (i = 0; i < nb_ports; i++) {
+        rte_eth_stats_get(i, &eth_stats);
+        printf("\nPort %u stats:\n", i);
+        printf(" - Pkts in:   %"PRIu64"\n", eth_stats.ipackets);
+        printf(" - Pkts out:  %"PRIu64"\n", eth_stats.opackets);
+        printf(" - In Errs:   %"PRIu64"\n", eth_stats.ierrors);
+        printf(" - Out Errs:  %"PRIu64"\n", eth_stats.oerrors);
+        printf(" - Mbuf Errs: %"PRIu64"\n", eth_stats.rx_nombuf);
+    }
 }
 
 
@@ -191,7 +195,7 @@ static void print_eth_info(uint8_t port_id){
     rte_eth_link_get_nowait(port_id, &link);
     printf("Link status for port %u:\n", port_id);
     printf("link_speed=%u\tlink_duplex=%u\tlink_autoneg=%u\tlink_status=%u\n",
-        link.link_speed, link.link_duplex, link.link_autoneg, link.link_status);
+            link.link_speed, link.link_duplex, link.link_autoneg, link.link_status);
 
     rte_eth_stats_get(port_id, &stats);
 
@@ -212,23 +216,23 @@ static void print_eth_info(uint8_t port_id){
 
     for(i =0; i < 10; i++){
 
-    printf("q__ipackets=%"PRIu64"\topackets=%"PRIu64"\n", stats.q_ipackets[i], stats.q_opackets[i]);
-    printf("q__ibytes=%"PRIu64"\tobytes=%"PRIu64"\n", stats.q_ibytes[i], stats.q_obytes[i]);
-    printf("q__errors=%"PRIu64"\n", stats.q_errors[i]);
-    printf("\n\n");
+        printf("q__ipackets=%"PRIu64"\topackets=%"PRIu64"\n", stats.q_ipackets[i], stats.q_opackets[i]);
+        printf("q__ibytes=%"PRIu64"\tobytes=%"PRIu64"\n", stats.q_ibytes[i], stats.q_obytes[i]);
+        printf("q__errors=%"PRIu64"\n", stats.q_errors[i]);
+        printf("\n\n");
     }
 
 
-    
+
 }
 
 #if 0
-  void ClearScreen()
-    {
+void ClearScreen()
+{
     int n;
     for (n = 0; n < 10; n++)
-      printf( "\n\n\n\n\n\n\n\n\n\n" );
-    }
+        printf( "\n\n\n\n\n\n\n\n\n\n" );
+}
 #endif
 
 /*Total Usable lcores*/
@@ -321,19 +325,20 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     static __attribute__((unused)) int
 slave_bmain(__attribute__((unused)) void *arg)
 {
-    time_t endwait;
-    time_t start = time(NULL);
-    time_t seconds = 30; // end loop after this time has elapsed
-
-    endwait = start + seconds;
-
-    printf("start time is : %s", ctime(&start));
-
 
     const uint8_t nb_ports = rte_eth_dev_count();
     uint8_t port;
-    int queue_id = map_lcore_to_queue[rte_lcore_id()];
+    struct rte_mbuf *pkts_burst[BURST_SIZE];
+    struct rte_mbuf  *mb;
+    struct ether_hdr *eth_hdr;
+    struct ether_addr addr;
 
+    uint16_t nb_rx;
+    uint16_t nb_tx;
+    uint64_t ol_flags=0;
+    int i = 0;
+
+    int queue_id = map_lcore_to_queue[rte_lcore_id()];
     printf("Slave: Core [%d], Queue[%d]\n",rte_lcore_id(), queue_id );
 
     /*
@@ -356,123 +361,68 @@ slave_bmain(__attribute__((unused)) void *arg)
     uint64_t r_int_array[MEM_ACESS_PER_BURST];
     /*Count a number of packets and measure time once completed*/
 
+    while(1){
+        /*
+         * Receive a burst of packets and forward them.
+         */
+        nb_rx = rte_eth_rx_burst(PORT_ID, queue_id, pkts_burst,
+                BURST_SIZE);
+        if (unlikely(nb_rx == 0))
+            return;
+
+        total_packets += nb_rx;
+        for (i = 0; i < nb_rx; i++) {
+            if (likely(i < nb_rx - 1))
+                rte_prefetch0(rte_pktmbuf_mtod(pkts_burst[i + 1],
+                            void *));
+            mb = pkts_burst[i];
+            eth_hdr = rte_pktmbuf_mtod(mb, struct ether_hdr *);
+
+            /* Swap dest and src mac addresses. */
+            ether_addr_copy(&eth_hdr->d_addr, &addr);
+            ether_addr_copy(&eth_hdr->s_addr, &eth_hdr->d_addr);
+            ether_addr_copy(&addr, &eth_hdr->s_addr);
+
+            mb->ol_flags = ol_flags;
+            mb->l2_len = sizeof(struct ether_hdr);
+            mb->l3_len = sizeof(struct ipv4_hdr);
+            //mb->vlan_tci = txp->tx_vlan_id;
+            //mb->vlan_tci_outer = txp->tx_vlan_id_outer;
+        }
+        nb_tx = rte_eth_tx_burst(PORT_ID, queue_id, pkts_burst, nb_rx);
 #if 0
-    while(start < endwait) {
-#endif
-#if 0
-    while (total_packets < RX_NUM_PACKETS) {
-#endif
-
-#if 1
-        int memory_array_index = 0;
-        int stride_size = 1024*1024*1;
-        int mem_size = 1024*1024*1000;
-        int i = 0;
-        char print_array_val_0;
-        char print_array_val_1;
-        char print_array_val_2;
-        char print_array_val_3;
-
-        while(1){
-
-
-            if(keepRunning == 0){
-                break;
+        /*
+         * Retry if necessary
+         */
+        if (unlikely(nb_tx < nb_rx) && fs->retry_enabled) {
+            retry = 0;
+            while (nb_tx < nb_rx && retry++ < burst_tx_retry_num) {
+                rte_delay_us(burst_tx_delay_time);
+                nb_tx += rte_eth_tx_burst(fs->tx_port, fs->tx_queue,
+                        &pkts_burst[nb_tx], nb_rx - nb_tx);
             }
-#endif
-        /*Initialize an array with random values that will be accessed
-         * in the random access array. Two different rand() calls are used
-         * to ensure that the values are sufficiently far away so the mem
-         * chunks are not cached*/
-#if 0
-        int i;
-        for(i=0; i < MEM_ACESS_PER_BURST-1; i=i+2){
-            r_int_array[i] = (rand() % 400000000);
-            r_int_array[i+1] = (rand() % 40000);
-        } 
-#endif
-        //printf("rand() = %d\n", rand() % 400000000);
-        //printf("rand() = %d\n", rand() % 40000);
+        }
+        fs->tx_packets += nb_tx;
 
-        //uint64_t in_start  = rte_get_tsc_cycles();
-        /* The current device the link is plugged into PORT_ID*/
-
-        struct rte_mbuf *bufs[BURST_SIZE];
-        const uint16_t nb_rx = rte_eth_rx_burst(PORT_ID, queue_id,
-                bufs, BURST_SIZE);
-
-        //print_stats();
-        //print_eth_info(0);
-        //ClearScreen();
-        //printf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\r");
-        //fflush(stdout);
-        
-
-
-
-        /****Memory Access**********/
-
-#if 1
-        for(i = 0; i < nb_rx*MEM_ACCESS_PER_PACKET; i++){
-        r_mem_chunk[memory_array_index] = 'c';
-        memory_array_index = (memory_array_index+stride_size)%mem_size;
+        if (unlikely(nb_tx < nb_rx)) {
+            fs->fwd_dropped += (nb_rx - nb_tx);
+            do {
+                rte_pktmbuf_free(pkts_burst[nb_tx]);
+            } while (++nb_tx < nb_rx);
         }
 #endif
-
-#if 0
-        for (i = 0; i < 32; i++) {
-        //tmp_mem_chunk = (char*) malloc(1024*1024*1);
-        }
-#endif
-
-# if 0
-
-        print_array_val_0 = r_mem_chunk[(memory_array_index+stride_size)%mem_size];
-        memory_array_index =(memory_array_index + stride_size) %mem_size;
-
-        print_array_val_1 = r_mem_chunk[(memory_array_index+stride_size)%mem_size];
-        memory_array_index =(memory_array_index + stride_size) %mem_size;
-
-        print_array_val_2 = r_mem_chunk[(memory_array_index+stride_size)%mem_size];
-        memory_array_index =(memory_array_index + stride_size) %mem_size;
-
-        print_array_val_3 = r_mem_chunk[(memory_array_index+stride_size)%mem_size];
-        memory_array_index =(memory_array_index + stride_size) %mem_size;
-
-#endif
-
-
-
-#if 0
-        for(i=0; i < MEM_ACESS_PER_BURST; i++){
-            r_mem_chunk[r_int_array[i]] = 'c';
-        }
-#endif
-        /***************************/
-        rte_pktmbuf_free_bulk(bufs,nb_rx);
-        //uint64_t in_end = rte_get_tsc_cycles();
-
-        //total_packets += nb_rx;
-        //real_time_cyc += in_end - in_start;
-
-        //printf("rx return is %d core/queue [%d]\n", nb_rx, rte_lcore_id());
-
-        //if (unlikely(nb_rx == 0))
-        //    continue;
-        //start = time(NULL);
+    rte_pktmbuf_free_bulk(pkts_burst,nb_rx);
+    //rte_pktmbuf_free(pkts_burst[nb_tx]);
     }
-        real_time_cyc = 0;
-        printf("no-delte-me->%p\n", r_mem_chunk);
-#if 1
-    float real_time_sec = ((double)(real_time_cyc)/(rte_get_tsc_hz()));
-    printf("(Optimistic) Total packets [%" PRIu64 "] in %lf sec: PPS = [%0.lf]\n",
-            total_packets, real_time_sec, ((float)(total_packets)/(real_time_sec)));
 
-    /*Store total packet count in array to be totaled at the end*/
-    map_lcore_to_mpps[rte_lcore_id()] = ((float)(total_packets)/real_time_sec);
-#endif
-    return 0;
+
+
+
+return 0;
+
 }
+
+
 
 void intHandler(int dummy) {
     keepRunning = 0;
@@ -484,13 +434,11 @@ void intHandler(int dummy) {
 int main(int argc, char *argv[])
 {
 
-    signal(SIGINT, intHandler);
 
     struct rte_mempool *mbuf_pool;
     unsigned nb_ports;
     uint8_t portid;
     uint32_t id_core;
-    srand(time(NULL));
 
     /* Initialize the Environment Abstraction Layer (EAL). */
     int ret = rte_eal_init(argc, argv);
@@ -500,29 +448,6 @@ int main(int argc, char *argv[])
     argc -= ret;
     argv += ret;
 
-    // Allocate 1024*1024-> 1mb * 1024 which is larger than cache size
-    int bytes = (1024*1024*1024);
-
-    //TODO(shelbyt): Change to rte_malloc currently segfaults using rtemalloc
-    r_mem_chunk = (char*) malloc(bytes);
-#if 0
-    //Fill array with random shit so we can access later-/ 
-    //---------------------------------------------------/
-    static const char alphanum[] = 
-        "0123456789"
-        "ABCDEFGHIJKLMNOPQRSTUIWXYZ"
-        "abcdefghipqrstuvwxyz";
-
-    for (int i = 0; i < bytes; ++i) {
-        r_mem_chunk[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
-    }
-
-    r_mem_chunk[bytes] = 0;
-    printf("mem chunk random %c\n",r_mem_chunk[rand()%bytes]);
-    //---------------------------------------------------/
-#endif
-    
-    
 
     /* Check that there is an even number of ports to send/receive on. */
     nb_ports = rte_eth_dev_count();

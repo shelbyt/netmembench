@@ -46,7 +46,7 @@
 
 #define NUM_MBUFS 8191*4
 #define MBUF_CACHE_SIZE 250
-#define BURST_SIZE 32
+#define BURST_SIZE 64
 
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = { .max_rx_pkt_len = ETHER_MAX_LEN }
@@ -197,7 +197,7 @@ lcore_main(void)
             /* Get burst of RX packets, from first port of pair. */
             const uint16_t nb_rx = rte_eth_rx_burst(port, 0,
                     bufs, BURST_SIZE);
-            //printf("nb_rx = %d\n",nb_rx);
+            printf("nb_rx = %d\n",nb_rx);
             //printf("RXd packets\n");
             rte_atomic16_clear(&a16);
             //printf("clear--->%d\n",a16);
@@ -208,22 +208,23 @@ lcore_main(void)
                 if (unlikely(nb_rx == 0))
                     continue;
 
-                rte_atomic16_inc(&a16);
-                //printf("atomic val -> %d\n",a16);
+              rte_atomic16_inc(&a16);
+                printf("atomic val -> %d\n",a16);
 
                 //printf("yay packets\n");
-                next_pkt = bufs[i];
+              next_pkt = bufs[i];
                 /*Current causing segfaults*/
-                //rte_prefetch0(rte_pktmbuf_mtod(next_pkt, void *));
+                //printf("next_plk = %p\n",next_pkt);
+              rte_prefetch0(rte_pktmbuf_mtod(next_pkt, void *));
                 //eh = rte_pktmbuf_mtod(next_pkt, struct ether_hdr *);
                 //ih = rte_pktmbuf_mtod_offset(next_pkt, struct ipv4_hdr *, sizeof(struct ether_hdr));
-                pktbuf = rte_pktmbuf_mtod_offset(next_pkt, struct atomic_pkt *, data_o);
+              pktbuf = rte_pktmbuf_mtod_offset(next_pkt, struct atomic_pkt *, data_o);
                 //pktbuf = NULL;
                 //printf("memset start\n");
                 //printf("%p\n",next_pkt);
                 //printf("pktbuf -> %p\n",pktbuf);
-                memset((struct atomic_pkt *)pktbuf, 0, rte_pktmbuf_data_len(next_pkt)-data_o);
-                pktbuf->count = a16;
+              //memset((struct atomic_pkt *)pktbuf, 0, rte_pktmbuf_data_len(next_pkt)-data_o);
+              pktbuf->count = a16;
                 //printf("pktbuf -> %p\n",pktbuf);
 
                // printf("memset end\n");

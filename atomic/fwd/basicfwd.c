@@ -127,8 +127,6 @@ lcore_main(void)
 {
 
     rte_atomic16_init(&a16);
-    rte_atomic16_set(&a16, 1UL << 5);
-
 	const uint8_t nb_ports = rte_eth_dev_count();
 	uint8_t port;
     int i;
@@ -141,9 +139,8 @@ lcore_main(void)
         rte_atomic16_t count;
     };
 
-
     struct atomic_pkt *pktbuf;
-    uint16_t global = 0;
+
 	/*
 	 * Check that the port is on the same NUMA node as the polling thread
 	 * for best performance.
@@ -170,9 +167,7 @@ lcore_main(void)
             /* Get burst of RX packets, from first port of pair. */
             const uint16_t nb_rx = rte_eth_rx_burst(port, 0,
                     bufs, BURST_SIZE);
-            //printf("RXd packets\n");
             rte_atomic16_clear(&a16);
-//====================================================================
             for(i=0; i  < BURST_SIZE; i++) {
                 //printf("i is <%d>\n", i);
 
@@ -181,36 +176,32 @@ lcore_main(void)
 
                 rte_atomic16_inc(&a16);
                 //printf("atomic val -> %d\n",a16);
-
-                //printf("yay packets\n");
                 next_pkt = bufs[i];
-                /*Current causing segfaults*/
                 rte_prefetch0(rte_pktmbuf_mtod(next_pkt, void *));
                 eh = rte_pktmbuf_mtod(next_pkt, struct ether_hdr *);
                 ih = rte_pktmbuf_mtod_offset(next_pkt, struct ipv4_hdr *, sizeof(struct ether_hdr));
-                pktbuf = rte_pktmbuf_mtod_offset(next_pkt, struct atomic_pkt *, data_o);
-                printf("memset start\n");
-                printf("%p\n",next_pkt);
-                memset((struct atomic_pkt *)pktbuf, 0, rte_pktmbuf_data_len(next_pkt)-data_o);
-                pktbuf->count = a16;
-                printf("memset end\n");
-                
-                //if(rte_pktmbuf_append(next_pkt, 100) == NULL){
-                //    fprintf(stderr, "Failed to append to mbuf %d!\n", i);
-                //}
 
+                /* Cast remaining packet data as atomic_pkt structure*/
+                pktbuf = rte_pktmbuf_mtod_offset(next_pkt, struct atomic_pkt *, data_o);
+
+                //printf("%p\n",next_pkt);
+                
+                /* Clear any data here before we write to it. Memset as atomic_pkt structure */
+                memset((struct atomic_pkt *)pktbuf, 0, rte_pktmbuf_data_len(next_pkt)-data_o);
+
+                /* Write atomic data*/
+                pktbuf->count = a16;
+                
                 //printf("pktbuf-len= [%d]\n",rte_pktmbuf_data_len(next_pkt));
                 //printf("data-len= [%d]\n",data_o);
                 //printf("diff-len= [%d]\n",rte_pktmbuf_data_len(next_pkt)-data_o);
                 //printf("Packetbuf data = [%s]\n",pktbuf);
 
             }
-//====================================================================
+
             /* Send burst of TX packets, to second port of pair. */
-            //printf("TXd packets\n");
             const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
                     bufs, nb_rx);
-
 
             /* Free any unsent packets. */
             if (unlikely(nb_tx < nb_rx)) {

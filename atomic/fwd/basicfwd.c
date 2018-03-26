@@ -51,6 +51,7 @@
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = { .max_rx_pkt_len = ETHER_MAX_LEN }
 };
+static rte_atomic16_t a16;
 
 /* basicfwd.c: Basic DPDK skeleton forwarding example. */
 
@@ -124,23 +125,25 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 static __attribute__((noreturn)) void
 lcore_main(void)
 {
+
+    rte_atomic16_init(&a16);
+    rte_atomic16_set(&a16, 1UL << 5);
+
 	const uint8_t nb_ports = rte_eth_dev_count();
 	uint8_t port;
     int i;
     struct rte_mbuf *next_pkt;
-    int global_count = 0;
     struct ether_hdr *eh;
     struct ipv4_hdr *ih;
-    char *pktbuf;
+    const uint16_t data_o = sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr)  + sizeof(struct tcp_hdr)  ;
 
     struct atomic_pkt {
-        uint16_t count;
+        rte_atomic16_t count;
     };
 
-    struct atomic_pkt atomic_value;
 
-    
-
+    struct atomic_pkt *pktbuf;
+    uint16_t global = 0;
 	/*
 	 * Check that the port is on the same NUMA node as the polling thread
 	 * for best performance.
@@ -162,44 +165,60 @@ lcore_main(void)
 		 * Receive packets on a port and forward them on the paired
 		 * port. The mapping is 0 -> 1, 1 -> 0, 2 -> 3, 3 -> 2, etc.
 		 */
-		for (port = 0; port < nb_ports; port++) {
+        for (port = 0; port < nb_ports; port++) {
+            struct rte_mbuf *bufs[BURST_SIZE];
+            /* Get burst of RX packets, from first port of pair. */
+            const uint16_t nb_rx = rte_eth_rx_burst(port, 0,
+                    bufs, BURST_SIZE);
+            //printf("RXd packets\n");
+            rte_atomic16_clear(&a16);
+//====================================================================
             for(i=0; i  < BURST_SIZE; i++) {
-			struct rte_mbuf *bufs[BURST_SIZE];
-			    /* Get burst of RX packets, from first port of pair. */
-			    const uint16_t nb_rx = rte_eth_rx_burst(port, 0,
-			    		bufs, BURST_SIZE);
+                //printf("i is <%d>\n", i);
+
+                if (unlikely(nb_rx == 0))
+                    continue;
+
+                rte_atomic16_inc(&a16);
+                //printf("atomic val -> %d\n",a16);
+
+                //printf("yay packets\n");
+                next_pkt = bufs[i];
+                /*Current causing segfaults*/
+                rte_prefetch0(rte_pktmbuf_mtod(next_pkt, void *));
+                eh = rte_pktmbuf_mtod(next_pkt, struct ether_hdr *);
+                ih = rte_pktmbuf_mtod_offset(next_pkt, struct ipv4_hdr *, sizeof(struct ether_hdr));
+                pktbuf = rte_pktmbuf_mtod_offset(next_pkt, struct atomic_pkt *, data_o);
+                printf("memset start\n");
+                printf("%p\n",next_pkt);
+                memset((struct atomic_pkt *)pktbuf, 0, rte_pktmbuf_data_len(next_pkt)-data_o);
+                pktbuf->count = a16;
+                printf("memset end\n");
+                
+                //if(rte_pktmbuf_append(next_pkt, 100) == NULL){
+                //    fprintf(stderr, "Failed to append to mbuf %d!\n", i);
+                //}
+
+                //printf("pktbuf-len= [%d]\n",rte_pktmbuf_data_len(next_pkt));
+                //printf("data-len= [%d]\n",data_o);
+                //printf("diff-len= [%d]\n",rte_pktmbuf_data_len(next_pkt)-data_o);
+                //printf("Packetbuf data = [%s]\n",pktbuf);
+
+            }
+//====================================================================
+            /* Send burst of TX packets, to second port of pair. */
+            //printf("TXd packets\n");
+            const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
+                    bufs, nb_rx);
 
 
-			    if (unlikely(nb_rx == 0))
-			    	continue;
-
-
-            next_pkt = bufs[i];
-            rte_prefetch0(rte_pktmbuf_mtod(next_pkt, void *));
-            eh = rte_pktmbuf_mtod(next_pkt, struct ether_hdr *);
-            ih = rte_pktmbuf_mtod_offset(next_pkt, struct ipv4_hdr *, sizeof(struct ether_hdr));
-            pktbuf = rte_pktmbuf_mtod_offset(next_pkt, char *, 
-                    sizeof(struct ether_hdr) +
-                    sizeof(struct ipv4_hdr)  +
-                    sizeof(struct tcp_hdr)  
-                    );
-            printf("pktbuf-len= [%d]\n",rte_pktmbuf_data_len(next_pkt));
-            printf("Packetbuf data = [%s]\n",pktbuf);
-
-
-
-			    /* Send burst of TX packets, to second port of pair. */
-			    const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
-			    		bufs, nb_rx);
-
-			    /* Free any unsent packets. */
-			    if (unlikely(nb_tx < nb_rx)) {
-			    	uint16_t buf;
-			    	for (buf = nb_tx; buf < nb_rx; buf++)
-			    		rte_pktmbuf_free(bufs[buf]);
-			    }
+            /* Free any unsent packets. */
+            if (unlikely(nb_tx < nb_rx)) {
+                uint16_t buf;
+                for (buf = nb_tx; buf < nb_rx; buf++)
+                    rte_pktmbuf_free(bufs[buf]);
+            }
         }
-		}
 	}
 }
 

@@ -44,13 +44,38 @@
 #define RX_RING_SIZE 128
 #define TX_RING_SIZE 512
 
-#define NUM_MBUFS 8191
+#define NUM_MBUFS 8191*4
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 32
 
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = { .max_rx_pkt_len = ETHER_MAX_LEN }
 };
+
+//static struct rte_eth_conf port_conf_default = {
+//      .rxmode = {
+//          .mq_mode = ETH_MQ_RX_RSS,
+//          .max_rx_pkt_len = ETHER_MAX_LEN,
+//          .split_hdr_size = 0,
+//          .header_split   = 0, /**< Header Split disabled */
+//          .hw_ip_checksum = 0, /**< IP checksum offload enabled */
+//          .hw_vlan_filter = 0, /**< VLAN filtering disabled */
+//          .jumbo_frame    = 0, /**< Jumbo Frame Support disabled */
+//          .hw_strip_crc   = 0, /**< CRC stripped by hardware */
+//      },
+//      .rx_adv_conf = {
+//          .rss_conf = {
+//              .rss_key = NULL,
+//              .rss_hf = ETH_RSS_IP,
+//          },
+//      },
+//      .txmode = {
+//          .mq_mode = ETH_MQ_TX_NONE,
+//      },
+//  };
+
+
+
 static rte_atomic16_t a16;
 
 /* basicfwd.c: Basic DPDK skeleton forwarding example. */
@@ -122,11 +147,15 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
  * The lcore main. This is the main thread that does the work, reading from
  * an input port and writing to an output port.
  */
-static __attribute__((noreturn)) void
+static __attribute__((noreturn)) void 
 lcore_main(void)
+//    static int
+//lcore_main(__attribute__((unused)) void *arg)
 {
 
     rte_atomic16_init(&a16);
+    rte_atomic16_set(&a16, 1UL << 5);
+
 	const uint8_t nb_ports = rte_eth_dev_count();
 	uint8_t port;
     int i;
@@ -139,8 +168,9 @@ lcore_main(void)
         rte_atomic16_t count;
     };
 
-    struct atomic_pkt *pktbuf;
 
+    struct atomic_pkt *pktbuf;
+    uint16_t global = 0;
 	/*
 	 * Check that the port is on the same NUMA node as the polling thread
 	 * for best performance.
@@ -167,8 +197,12 @@ lcore_main(void)
             /* Get burst of RX packets, from first port of pair. */
             const uint16_t nb_rx = rte_eth_rx_burst(port, 0,
                     bufs, BURST_SIZE);
+            //printf("nb_rx = %d\n",nb_rx);
+            //printf("RXd packets\n");
             rte_atomic16_clear(&a16);
-            for(i=0; i  < BURST_SIZE; i++) {
+            //printf("clear--->%d\n",a16);
+//====================================================================
+            for(i=0; i  < nb_rx; i++) {
                 //printf("i is <%d>\n", i);
 
                 if (unlikely(nb_rx == 0))
@@ -176,32 +210,40 @@ lcore_main(void)
 
                 rte_atomic16_inc(&a16);
                 //printf("atomic val -> %d\n",a16);
+
+                //printf("yay packets\n");
                 next_pkt = bufs[i];
-                rte_prefetch0(rte_pktmbuf_mtod(next_pkt, void *));
-                eh = rte_pktmbuf_mtod(next_pkt, struct ether_hdr *);
-                ih = rte_pktmbuf_mtod_offset(next_pkt, struct ipv4_hdr *, sizeof(struct ether_hdr));
-
-                /* Cast remaining packet data as atomic_pkt structure*/
+                /*Current causing segfaults*/
+                //rte_prefetch0(rte_pktmbuf_mtod(next_pkt, void *));
+                //eh = rte_pktmbuf_mtod(next_pkt, struct ether_hdr *);
+                //ih = rte_pktmbuf_mtod_offset(next_pkt, struct ipv4_hdr *, sizeof(struct ether_hdr));
                 pktbuf = rte_pktmbuf_mtod_offset(next_pkt, struct atomic_pkt *, data_o);
-
+                //pktbuf = NULL;
+                //printf("memset start\n");
                 //printf("%p\n",next_pkt);
-                
-                /* Clear any data here before we write to it. Memset as atomic_pkt structure */
+                //printf("pktbuf -> %p\n",pktbuf);
                 memset((struct atomic_pkt *)pktbuf, 0, rte_pktmbuf_data_len(next_pkt)-data_o);
-
-                /* Write atomic data*/
                 pktbuf->count = a16;
+                //printf("pktbuf -> %p\n",pktbuf);
+
+               // printf("memset end\n");
                 
+                //if(rte_pktmbuf_append(next_pkt, 100) == NULL){
+                //    fprintf(stderr, "Failed to append to mbuf %d!\n", i);
+                //}
+
                 //printf("pktbuf-len= [%d]\n",rte_pktmbuf_data_len(next_pkt));
                 //printf("data-len= [%d]\n",data_o);
                 //printf("diff-len= [%d]\n",rte_pktmbuf_data_len(next_pkt)-data_o);
                 //printf("Packetbuf data = [%s]\n",pktbuf);
 
             }
-
+//====================================================================
             /* Send burst of TX packets, to second port of pair. */
+            //printf("TXd packets\n");
             const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
                     bufs, nb_rx);
+
 
             /* Free any unsent packets. */
             if (unlikely(nb_tx < nb_rx)) {
@@ -223,6 +265,7 @@ main(int argc, char *argv[])
 	struct rte_mempool *mbuf_pool;
 	unsigned nb_ports;
 	uint8_t portid;
+    uint8_t id_core;
 
 	/* Initialize the Environment Abstraction Layer (EAL). */
 	int ret = rte_eal_init(argc, argv);
@@ -254,6 +297,17 @@ main(int argc, char *argv[])
 		printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
 
 	/* Call lcore_main on the master core only. */
+    //rte_eal_mp_remote_launch(lcore_main, NULL, CALL_MASTER);
+    //
+    //RTE_LCORE_FOREACH_SLAVE(id_core) {
+    //    rte_eal_remote_launch(lcore_main, NULL, id_core);
+    //}
+    //lcore_main(NULL);
+    //rte_eal_remote_launch(slave_main, NULL, 1);
+    //
+    //      rte_eal_mp_wait_lcore();
+    //
+    //
 	lcore_main();
 
 	return 0;

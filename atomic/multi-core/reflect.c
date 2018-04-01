@@ -49,6 +49,13 @@
 #include <unistd.h>
 #include <signal.h>
 
+/*Per Packet processing*/
+#include <rte_ip.h>
+#include <rte_tcp.h>
+#include <time.h>
+#include <stdlib.h>
+
+
 #define MEM_ACCESS_PER_PACKET 4
 
 #define RX_RING_SIZE 256
@@ -90,6 +97,7 @@ uint32_t map_lcore_to_queue[RTE_MAX_CORES];
 uint32_t map_lcore_to_mpps[RTE_MAX_CORES] = {0};
 char *r_mem_chunk;
 char *tmp_mem_chunk;
+static rte_atomic16_t a16;
 
 static volatile int keepRunning = 1;
 
@@ -325,6 +333,27 @@ slave_bmain(__attribute__((unused)) void *arg)
     time_t start = time(NULL);
     time_t seconds = 30; // end loop after this time has elapsed
 
+    /******Per Packet + Atomic Support*********************/
+
+    rte_atomic16_init(&a16);
+    rte_atomic16_set(&a16, 1UL << 5);
+
+    struct rte_mbuf *next_pkt;
+    struct ether_hdr *eh;
+    struct ipv4_hdr *ih;
+    const uint16_t data_o = sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr)  
+        + sizeof(struct tcp_hdr);
+
+    struct atomic_pkt {
+        rte_atomic16_t count;
+    };
+
+    struct atomic_pkt *pktbuf;
+    /***********************************************/
+
+
+
+
     endwait = start + seconds;
 
     printf("start time is : %s", ctime(&start));
@@ -368,7 +397,6 @@ slave_bmain(__attribute__((unused)) void *arg)
         int stride_size = 1024*1024*1;//100 for 1 gb, 1mb for 3 mb
         int mem_size = MEM_SIZE;
         int i = 0;
-        int global = 0;
         //char print_array_val_0;
         //char print_array_val_1;
         //char print_array_val_2;
@@ -402,7 +430,7 @@ slave_bmain(__attribute__((unused)) void *arg)
         struct rte_mbuf *bufs[BURST_SIZE];
         const uint16_t nb_rx = rte_eth_rx_burst(PORT_ID, queue_id,
                 bufs, BURST_SIZE);
-        global++;
+
 
         //print_stats();
         //print_eth_info(0);
@@ -410,6 +438,45 @@ slave_bmain(__attribute__((unused)) void *arg)
         //printf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\r");
         //fflush(stdout);
         
+//====================================================================
+#if 0
+            for(i=0; i  < nb_rx; i++) {
+                //printf("i is <%d>\n", i);
+
+                if (unlikely(nb_rx == 0))
+                    continue;
+
+                rte_atomic16_inc(&a16);
+
+              next_pkt = bufs[i];
+                /*Current causing segfaults*/
+                //printf("next_plk = %p\n",next_pkt);
+              if(likely( (i+1) < nb_rx)){
+              rte_prefetch0(rte_pktmbuf_mtod(bufs[i+1], void *));
+              }
+               //eh = rte_pktmbuf_mtod(next_pkt, struct ether_hdr *);
+               // ih = rte_pktmbuf_mtod_offset(next_pkt, struct ipv4_hdr *, sizeof(struct ether_hdr));
+              pktbuf = rte_pktmbuf_mtod_offset(next_pkt, struct atomic_pkt *, data_o);
+                //pktbuf = NULL;
+                //printf("memset start\n");
+                //printf("%p\n",next_pkt);
+                //printf("pktbuf -> %p\n",pktbuf);
+              //memset((struct atomic_pkt *)pktbuf, 0, rte_pktmbuf_data_len(next_pkt)-data_o);
+             pktbuf->count = a16;
+                  
+                //printf("pktbuf -> %p\n",pktbuf);
+
+               // printf("memset end\n");
+                
+                //printf("pktbuf-len= [%d]\n",rte_pktmbuf_data_len(next_pkt));
+                //printf("data-len= [%d]\n",data_o);
+                //printf("diff-len= [%d]\n",rte_pktmbuf_data_len(next_pkt)-data_o);
+                //printf("Packetbuf data = [%s]\n",pktbuf);
+
+            }
+
+#endif
+//====================================================================
 
 
 

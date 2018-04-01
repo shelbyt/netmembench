@@ -52,6 +52,7 @@
 /*Per Packet processing*/
 #include <rte_ip.h>
 #include <rte_tcp.h>
+#include <rte_udp.h>
 #include <time.h>
 #include <stdlib.h>
 
@@ -342,7 +343,7 @@ slave_bmain(__attribute__((unused)) void *arg)
     struct ether_hdr *eh;
     struct ipv4_hdr *ih;
     const uint16_t data_o = sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr)  
-        + sizeof(struct tcp_hdr);
+        + sizeof(struct udp_hdr);
 
     struct atomic_pkt {
         rte_atomic16_t count;
@@ -439,7 +440,7 @@ slave_bmain(__attribute__((unused)) void *arg)
         //fflush(stdout);
         
 //====================================================================
-#if 0
+#if 1
             for(i=0; i  < nb_rx; i++) {
                 //printf("i is <%d>\n", i);
 

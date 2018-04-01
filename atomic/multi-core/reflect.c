@@ -431,6 +431,7 @@ slave_bmain(__attribute__((unused)) void *arg)
         struct rte_mbuf *bufs[BURST_SIZE];
         const uint16_t nb_rx = rte_eth_rx_burst(PORT_ID, queue_id,
                 bufs, BURST_SIZE);
+        rte_atomic16_clear(&a16);
 
 
         //print_stats();
